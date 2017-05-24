@@ -1849,7 +1849,7 @@ namespace osmscout {
       }
     }
 
-    std::sort(areaData.begin(), areaData.end(), AreaSorter);
+    areaData.sort(AreaSorter);
   }
 
   void MapPainter::PrepareWay(const StyleConfig& styleConfig,
@@ -1992,7 +1992,7 @@ namespace osmscout {
                  way->nodes);
     }
 
-    std::sort(wayData.begin(), wayData.end());
+    wayData.sort();
   }
 
   bool MapPainter::Draw(const Projection& projection,

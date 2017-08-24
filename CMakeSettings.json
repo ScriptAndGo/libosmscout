@@ -39,6 +39,14 @@
         {
           "name": "OSMSCOUT_BUILD_BINDING_CSHARP",
           "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_DIRECTX",
+          "value": "ON"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_IMPORT",
+          "value": "OFF"
         }
       ],
       "buildCommandArgs": "-m"
@@ -80,6 +88,14 @@
         },
         {
           "name": "OSMSCOUT_BUILD_BINDING_CSHARP",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_DIRECTX",
+          "value": "ON"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_IMPORT",
           "value": "OFF"
         }
       ],

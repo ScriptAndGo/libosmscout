@@ -82,8 +82,13 @@ HRESULT PathTextRenderer::DrawGlyphRun(
     // Determine whether the text is LTR or RTL.
     BOOL leftToRight = (glyphRun->bidiLevel % 2 == 0);
 
+    FLOAT totalRunLength = 0;
+    for (int idx = 0; idx < glyphRun->glyphCount; ++idx) {
+        totalRunLength += glyphRun->glyphAdvances[idx];
+    }
+
     // Set the initial length along the path.
-    FLOAT length = baselineOriginX;
+    FLOAT length = baselineOriginX + (maxLength - totalRunLength) / 2;
 
     // Set the index of the first glyph in the current glyph cluster.
     UINT firstGlyphIdx = 0;

@@ -71,10 +71,10 @@ HRESULT PathTextRenderer::DrawGlyphRun(
 
     // Compute the length of the geometry.
     FLOAT maxLength;
-	HRESULT hr = dc->geometry->ComputeLength(
-		originalTransform, &maxLength);
-	if (FAILED(hr))
-		return hr;
+    HRESULT hr = dc->geometry->ComputeLength(
+        originalTransform, &maxLength);
+    if (FAILED(hr))
+        return hr;
 
     // Set up a partial glyph run that we can modify.
     DWRITE_GLYPH_RUN partialGlyphRun = *glyphRun;
@@ -113,14 +113,14 @@ HRESULT PathTextRenderer::DrawGlyphRun(
             // Compute the offset and tangent at the cluster's midpoint.
             D2D1_POINT_2F offset;
             D2D1_POINT_2F tangent;
-			hr = dc->geometry->ComputePointAtLength(
+            hr = dc->geometry->ComputePointAtLength(
                     midpoint,
                     D2D1::IdentityMatrix(),
                     &offset,
                     &tangent
                     );
-			if (FAILED(hr))
-				return hr;
+            if (FAILED(hr))
+                return hr;
 
             // Create a rotation matrix to align the cluster to the path.
             // Alternatively, we could use the D2D1::Matrix3x2F::Rotation()
@@ -137,8 +137,8 @@ HRESULT PathTextRenderer::DrawGlyphRun(
 
             // Create a translation matrix to center the cluster on the tangent point.
             D2D1_MATRIX_3X2_F translation = leftToRight ?
-                D2D1::Matrix3x2F::Translation(-clusterWidth/2, 0) : // LTR --> nudge it left
-                D2D1::Matrix3x2F::Translation(clusterWidth/2, 0); // RTL --> nudge it right
+                D2D1::Matrix3x2F::Translation(-clusterWidth/2, glyphRun->fontEmSize/4) : // LTR --> nudge it left
+                D2D1::Matrix3x2F::Translation(clusterWidth/2, glyphRun->fontEmSize/4); // RTL --> nudge it right
 
             // Apply the transformations (in the proper order).
             dc->d2DContext->SetTransform(translation * rotation * originalTransform);

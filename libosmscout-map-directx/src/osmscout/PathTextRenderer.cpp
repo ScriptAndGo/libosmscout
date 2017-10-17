@@ -1,6 +1,7 @@
 
 //#include "pch.h"
 #include "osmscout/PathTextRenderer.h"
+#include <cmath>
 
 // An identity matrix for use by IDWritePixelSnapping::GetCurrentTransform.
 const DWRITE_MATRIX identityTransform =
@@ -88,7 +89,7 @@ HRESULT PathTextRenderer::DrawGlyphRun(
     }
 
     // Set the initial length along the path.
-    FLOAT length = baselineOriginX + (maxLength - totalRunLength) / 2;
+    FLOAT length = baselineOriginX + max((maxLength - totalRunLength) / 2, 0);
 
     // Set the index of the first glyph in the current glyph cluster.
     UINT firstGlyphIdx = 0;

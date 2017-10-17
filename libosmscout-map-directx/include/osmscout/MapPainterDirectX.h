@@ -23,6 +23,7 @@
 #include <unordered_map>
 
 #include <osmscout/MapDirectXFeatures.h>
+#include <osmscout/PathTextRenderer.h>
 #include <osmscout/private/MapDirectXPaint.h>
 #include <osmscout/MapPainter.h>
 
@@ -51,6 +52,8 @@ namespace osmscout {
 		IDWriteFactory* m_pWriteFactory;
 		ID2D1RenderTarget* m_pRenderTarget;
 		IWICImagingFactory* m_pImagingFactory;
+		IDWriteRenderingParams* m_pRenderingParams;
+		PathTextRenderer* m_pPathTextRenderer;
 		FLOAT dpiX, dpiY;
 		CoordBufferImpl<Vertex2D>* coordBuffer;
 		std::map<double, double> fontHeightMap;

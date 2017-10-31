@@ -3,15 +3,14 @@
   "configurations": [
     {
       "name": "x86-Debug",
-      "generator": "Visual Studio 15 2017",
+      "generator": "Ninja",
       "configurationType": "Debug",
-      "buildRoot": "${env.USERPROFILE}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "inheritEnvironments": [ "msvc_x86" ],
+      "buildRoot": "${workspaceRoot}\\build\\${name}",
+      "installRoot": "${workspaceRoot}\\install\\${name}",
       "cmakeCommandArgs": "",
+      "buildCommandArgs": "-v",
       "variables": [
-        {
-          "name": "CMAKE_INSTALL_PREFIX",
-          "value": "${workspaceRoot}/${name}"
-        },
         {
           "name": "MARISA_ROOT_FOLDER",
           "value": "${workspaceRoot}\\..\\libosmscout_deps\\libmarisa"
@@ -47,21 +46,23 @@
         {
           "name": "OSMSCOUT_BUILD_IMPORT",
           "value": "OFF"
+        },
+        {
+          "name": "ENABLE_DEBUG_POSTFIX",
+          "value": "OFF"
         }
       ],
-      "buildCommandArgs": "-m"
+      "ctestCommandArgs": ""
     },
     {
       "name": "x86-Release",
-      "generator": "Visual Studio 15 2017",
-      "configurationType": "Release",
-      "buildRoot": "${env.USERPROFILE}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "generator": "Ninja",
+      "configurationType": "RelWithDebInfo",
+      "inheritEnvironments": [ "msvc_x86" ],
+      "buildRoot": "${workspaceRoot}\\build\\${name}",
+      "installRoot": "${workspaceRoot}\\install\\${name}",
       "cmakeCommandArgs": "",
       "variables": [
-        {
-          "name": "CMAKE_INSTALL_PREFIX",
-          "value": "${workspaceRoot}/${name}"
-        },
         {
           "name": "MARISA_ROOT_FOLDER",
           "value": "${workspaceRoot}\\..\\libosmscout_deps\\libmarisa"
@@ -99,7 +100,110 @@
           "value": "OFF"
         }
       ],
-      "buildCommandArgs": "-m"
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": ""
+    },
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "buildRoot": "${workspaceRoot}\\build\\${name}",
+      "installRoot": "${workspaceRoot}\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "variables": [
+        {
+          "name": "MARISA_ROOT_FOLDER",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\libmarisa"
+        },
+        {
+          "name": "PROTOBUF_ROOT_FOLDER",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\protobuf"
+        },
+        {
+          "name": "ZLIB_ROOT",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\zlib"
+        },
+        {
+          "name": "CMAKE_FIND_DEBUG_MODE",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_SVG",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_BINDING_JAVA",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_BINDING_CSHARP",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_DIRECTX",
+          "value": "ON"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_IMPORT",
+          "value": "OFF"
+        },
+        {
+          "name": "ENABLE_DEBUG_POSTFIX",
+          "value": "OFF"
+        }
+      ],
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": ""
+    },
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "RelWithDebInfo",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "buildRoot": "${workspaceRoot}\\build\\${name}",
+      "installRoot": "${workspaceRoot}\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "variables": [
+        {
+          "name": "MARISA_ROOT_FOLDER",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\libmarisa"
+        },
+        {
+          "name": "PROTOBUF_ROOT_FOLDER",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\protobuf"
+        },
+        {
+          "name": "ZLIB_ROOT",
+          "value": "${workspaceRoot}\\..\\libosmscout_deps\\zlib"
+        },
+        {
+          "name": "CMAKE_FIND_DEBUG_MODE",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_SVG",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_BINDING_JAVA",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_BINDING_CSHARP",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_MAP_DIRECTX",
+          "value": "ON"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_IMPORT",
+          "value": "OFF"
+        }
+      ],
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": ""
     }
   ]
 }

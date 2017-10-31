@@ -30,6 +30,7 @@
 #include <osmscout/system/Math.h>
 
 //add_definitions(-DUNICODE -D_UNICODE)
+#define UNICODE
 
 #if defined(UNICODE) || defined(_UNICODE) || defined(_MBCS) || defined(MBCS)
 #define MBUC

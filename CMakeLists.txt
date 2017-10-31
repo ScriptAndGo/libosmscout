@@ -134,12 +134,17 @@ if(BUILD_IMPORT_TOOL_FOR_DISTRIBUTION AND (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COM
   SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
+option(ENABLE_DEBUG_POSTFIX "Shared libraries " ON)  # SHARED lib default
 # postfix for debug builds
-if(NOT CMAKE_DEBUG_POSTFIX)
-    if(APPLE)
-        set(CMAKE_DEBUG_POSTFIX _debug)
-    else()
-        set(CMAKE_DEBUG_POSTFIX d)
+if(NOT ENABLE_DEBUG_POSTFIX)
+    set(CMAKE_DEBUG_POSTFIX)
+else()
+    if(NOT CMAKE_DEBUG_POSTFIX)
+        if(APPLE)
+            set(CMAKE_DEBUG_POSTFIX _debug)
+        else()
+            set(CMAKE_DEBUG_POSTFIX d)
+        endif()
     endif()
 endif()
 

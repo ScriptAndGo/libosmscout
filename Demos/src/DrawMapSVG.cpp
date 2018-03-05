@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
 
   searchParameter.SetMaximumAreaLevel(6);
 
-  std::list<osmscout::TileRef> tiles;
+  std::vector<osmscout::TileRef> tiles;
 
   mapService->LookupTiles(projection,tiles);
   mapService->LoadMissingTileData(searchParameter,*styleConfig,tiles);

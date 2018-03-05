@@ -63,9 +63,9 @@ bool write_ppm(const agg::rendering_buffer& buffer,
   return false;
 }
 
-void MergeTilesToMapData(const std::list<osmscout::TileRef>& centerTiles,
+void MergeTilesToMapData(const std::vector<osmscout::TileRef>& centerTiles,
                          const osmscout::MapService::TypeDefinition& ringTypeDefinition,
-                         const std::list<osmscout::TileRef>& ringTiles,
+                         const std::vector<osmscout::TileRef>& ringTiles,
                          osmscout::MapData& data)
 {
   std::unordered_map<osmscout::FileOffset,osmscout::NodeRef> nodeMap(10000);
@@ -343,7 +343,7 @@ int main(int argc, char* argv[])
         std::cout << "Drawing tile " << level << "." << y << "." << x << " " << boundingBox.GetDisplayText() << std::endl;
 
 
-        std::list<osmscout::TileRef> centerTiles;
+        std::vector<osmscout::TileRef> centerTiles;
 
         mapService->LookupTiles(magnification,
                                 boundingBox,
@@ -364,7 +364,7 @@ int main(int argc, char* argv[])
             osmscout::GeoBox boundingBox(osmscout::OSMTileId(ringX,ringY).GetBoundingBox(magnification));
 
 
-            std::list<osmscout::TileRef> tiles;
+            std::vector<osmscout::TileRef> tiles;
 
             mapService->LookupTiles(magnification,
                                     boundingBox,
@@ -376,7 +376,7 @@ int main(int argc, char* argv[])
           }
         }
 
-        std::list<osmscout::TileRef> ringTiles;
+        std::vector<osmscout::TileRef> ringTiles;
 
         for (const auto& tileEntry : ringTileMap) {
           ringTiles.push_back(tileEntry.second);

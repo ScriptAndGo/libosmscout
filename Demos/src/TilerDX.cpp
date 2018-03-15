@@ -91,9 +91,9 @@ bool write_png(IWICBitmap *bmp, IWICImagingFactory *factory, const wchar_t* file
 	return true;
 }
 
-void MergeTilesToMapData(const std::vector<osmscout::TileRef>& centerTiles,
+void MergeTilesToMapData(const std::list<osmscout::TileRef>& centerTiles,
 	const osmscout::MapService::TypeDefinition& ringTypeDefinition,
-	const std::vector<osmscout::TileRef>& ringTiles,
+	const std::list<osmscout::TileRef>& ringTiles,
 	osmscout::MapData& data)
 {
 	std::unordered_map<osmscout::FileOffset, osmscout::NodeRef> nodeMap(10000);
@@ -406,7 +406,7 @@ int main(int argc, char* argv[])
 				std::cout << "Drawing tile " << level << "." << y << "." << x << " " << boundingBox.GetDisplayText() << std::endl;
 
 
-				std::vector<osmscout::TileRef> centerTiles;
+				std::list<osmscout::TileRef> centerTiles;
 
 				mapService->LookupTiles(magnification,
 					boundingBox,
@@ -427,7 +427,7 @@ int main(int argc, char* argv[])
 						osmscout::GeoBox boundingBox(osmscout::OSMTileId(ringX, ringY).GetBoundingBox(magnification));
 
 
-						std::vector<osmscout::TileRef> tiles;
+						std::list<osmscout::TileRef> tiles;
 
 						mapService->LookupTiles(magnification,
 							boundingBox,
@@ -439,7 +439,7 @@ int main(int argc, char* argv[])
 					}
 				}
 
-				std::vector<osmscout::TileRef> ringTiles;
+				std::list<osmscout::TileRef> ringTiles;
 
 				for (const auto& tileEntry : ringTileMap) {
 					ringTiles.push_back(tileEntry.second);

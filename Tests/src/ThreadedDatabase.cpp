@@ -183,7 +183,7 @@ void AccessAreaIndex(osmscout::DatabaseRef& database,
       std::vector<osmscout::AreaRef>       optimizedAreaData;
       std::vector<osmscout::AreaRef>       areaData;
 
-      std::vector<osmscout::GroundTile>      tiles;
+      std::list<osmscout::GroundTile>      tiles;
 
       if (!areaNodeIndex->GetOffsets(testData.boundingBox,
                                      testData.nodeTypes,

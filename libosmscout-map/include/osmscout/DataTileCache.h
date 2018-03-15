@@ -475,7 +475,7 @@ namespace osmscout {
 
     void GetTilesForBoundingBox(const Magnification& magnification,
                                 const GeoBox& boundingBox,
-                                std::vector<TileRef>& tiles) const;
+                                std::list<TileRef>& tiles) const;
 
     void PrefillDataFromCache(Tile& tile,
                               const TypeInfoSet& nodeTypes,

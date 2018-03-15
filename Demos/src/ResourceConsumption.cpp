@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 
       osmscout::StopClock dbTimer;
 
-      std::vector<osmscout::TileRef> tiles;
+      std::list<osmscout::TileRef> tiles;
 
       mapService->LookupTiles(projection,tiles);
       mapService->LoadMissingTileData(searchParameter,*styleConfig,tiles);

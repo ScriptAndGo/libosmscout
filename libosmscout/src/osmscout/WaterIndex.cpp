@@ -122,7 +122,7 @@ namespace osmscout {
                                           uint32_t cx2,
                                           uint32_t cy1,
                                           uint32_t cy2,
-                                          std::vector<GroundTile>& tiles) const
+                                          std::list<GroundTile>& tiles) const
   {
     GroundTile tile;
 
@@ -164,7 +164,7 @@ namespace osmscout {
                                           uint32_t cx2,
                                           uint32_t cy1,
                                           uint32_t cy2,
-                                          std::vector<GroundTile>& tiles) const
+                                          std::list<GroundTile>& tiles) const
   {
     GroundTile tile;
 
@@ -260,7 +260,7 @@ namespace osmscout {
 
   bool WaterIndex::GetRegions(const GeoBox& boundingBox,
                               const Magnification& magnification,
-                              std::vector<GroundTile>& tiles) const
+                              std::list<GroundTile>& tiles) const
   {
     try {
       uint32_t cx1,cx2,cy1,cy2;

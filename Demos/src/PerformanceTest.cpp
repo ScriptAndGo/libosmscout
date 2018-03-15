@@ -362,7 +362,7 @@ int main(int argc, char* argv[])
 
       osmscout::GeoBox dataBoundingBox(tileBox.GetBoundingBox(magnification));
 
-      std::vector<osmscout::TileRef> tiles;
+      std::list<osmscout::TileRef> tiles;
 
       // set cache size almost unlimited,
       // for better estimate of peak memory usage by tile loading

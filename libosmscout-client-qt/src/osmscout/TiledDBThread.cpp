@@ -221,7 +221,7 @@ void TiledDBThread::DrawMap(QPainter &p, const osmscout::GeoCoord center, uint32
 
     bool success = true;
     for (auto &db:databases){
-      std::vector<osmscout::TileRef>  tiles;
+      std::list<osmscout::TileRef>  tiles;
       osmscout::MapData             data;
 
       osmscout::GeoBox dbBox;

@@ -20,7 +20,6 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include <functional>
 
 #include <osmscout/util/WorkQueue.h>
 

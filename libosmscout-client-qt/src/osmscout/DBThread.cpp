@@ -244,7 +244,7 @@ DatabaseCoverage DBThread::databaseCoverage(const osmscout::Magnification &magni
       // test if some database has full coverage for this box
       bool fullCoverage=false;
       for (const auto &db:databases){
-        std::vector<osmscout::GroundTile> groundTiles;
+        std::list<osmscout::GroundTile> groundTiles;
         if (!db->mapService->GetGroundTiles(bbox,magnification,groundTiles)){
           break;
         }
@@ -887,7 +887,7 @@ void DBThread::requestObjectsOnView(const RenderMapRequest &view)
     if (!db->database->IsOpen() || (!db->styleConfig)) {
       continue;
     }
-    std::vector<osmscout::TileRef>  tiles;
+    std::list<osmscout::TileRef>  tiles;
     osmscout::MapData             data;
 
     osmscout::GeoBox dbBox;

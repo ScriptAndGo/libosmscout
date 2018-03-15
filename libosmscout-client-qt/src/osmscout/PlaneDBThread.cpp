@@ -267,7 +267,7 @@ void PlaneDBThread::TriggerMapRendering(const RenderMapRequest& request)
         searchParameter.SetUseMultithreading(true);
         searchParameter.SetUseLowZoomOptimization(true);
 
-        std::vector<osmscout::TileRef> tiles;
+        std::list<osmscout::TileRef> tiles;
 
         db->mapService->LookupTiles(projection,tiles);
         if (tiles.size()>db->mapService->GetCacheSize()){
@@ -316,7 +316,7 @@ void PlaneDBThread::HandleTileStatusChanged(const osmscout::TileRef& changedTile
 
   bool relevant=false;
   for (auto &db: databases){
-    std::vector<osmscout::TileRef> tiles;
+    std::list<osmscout::TileRef> tiles;
 
     db->mapService->LookupTiles(projection,tiles);
 
@@ -449,7 +449,7 @@ void PlaneDBThread::DrawMap()
                                               1)));
     bool success=true;
     for (auto &db:databases){
-      std::vector<osmscout::TileRef> tiles;
+      std::list<osmscout::TileRef> tiles;
       osmscout::MapData            data; // TODO: make sence cache these data?
       osmscout::GeoBox             dbBox;
       osmscout::GeoBox             renderBox;

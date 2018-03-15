@@ -119,7 +119,7 @@ int main(int argc, char* argv[])
                      width,
                      height);
 
-      std::vector<osmscout::TileRef> tiles;
+      std::list<osmscout::TileRef> tiles;
 
       mapService->LookupTiles(projection,tiles);
       mapService->LoadMissingTileData(searchParameter,*styleConfig,tiles);

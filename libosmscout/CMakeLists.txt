@@ -183,6 +183,11 @@ install(TARGETS osmscout
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+
+if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:osmscout> DESTINATION bin OPTIONAL)
+endif()
+
 if(MARISA_FOUND)
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "private/Config.h" EXCLUDE)
 else()

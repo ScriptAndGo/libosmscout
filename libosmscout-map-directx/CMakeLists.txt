@@ -33,5 +33,10 @@ install(TARGETS osmscout_map_directx
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+
+if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:osmscout_map_directx> DESTINATION bin OPTIONAL)
+endif()
+
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "private/Config.h" EXCLUDE)
 install(FILES ${OSMSCOUT_BASE_DIR_BUILD}/include/osmscout/MapDirectXFeatures.h DESTINATION include/osmscout)

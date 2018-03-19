@@ -23,6 +23,9 @@
 #include <unordered_map>
 
 #include <osmscout/MapDirectXFeatures.h>
+
+#include <osmscout/private/MapDirectXImportExport.h>
+
 #include <osmscout/PathTextRenderer.h>
 #include <osmscout/private/MapDirectXPaint.h>
 #include <osmscout/MapPainter.h>
@@ -56,7 +59,6 @@ namespace osmscout {
 		IDWriteRenderingParams* m_pRenderingParams;
 		PathTextRenderer* m_pPathTextRenderer;
 		FLOAT dpiX, dpiY;
-		CoordBufferImpl<Vertex2D>* coordBuffer;
 		std::map<double, double> fontHeightMap;
 		TypeConfigRef typeConfig;
 
@@ -89,20 +91,15 @@ namespace osmscout {
 			const MapParameter& parameter,
 			IconStyle& style);
 
-		virtual void GetFontHeight(const Projection& projection,
+		virtual double GetFontHeight(const Projection& projection,
 			const MapParameter& parameter,
-			double fontSize,
-			double& height);
+			double fontSize);
 
-		virtual void GetTextDimension(const Projection& projection,
+		TextDimension GetTextDimension(const Projection& projection,
 			const MapParameter& parameter,
       double objectWidth,
 			double fontSize,
-			const std::string& text,
-			double& xOff,
-			double& yOff,
-			double& width,
-			double& height);
+			const std::string& text);
 
 		/*virtual void GetLabelFrame(const LabelStyle& style,
 			double& horizontal,
@@ -137,7 +134,8 @@ namespace osmscout {
 			const MapParameter& parameter,
 			const PathTextStyle& style,
 			const std::string& text,
-			size_t transStart, size_t transEnd);
+			size_t transStart, size_t transEnd,
+      ContourLabelHelper& helper);
 
 		virtual void DrawContourSymbol(const Projection& projection,
 			const MapParameter& parameter,

@@ -26,7 +26,7 @@
 #include <osmscout/util/File.h>
 #include <osmscout/util/FileScanner.h>
 #include <osmscout/util/Logger.h>
-#include <iostream>
+
 namespace osmscout {
 
   const char* WaterIndex::WATER_IDX="water.idx";
@@ -41,12 +41,12 @@ namespace osmscout {
     Close();
   }
 
-  bool WaterIndex::Open(const std::string& path)
+  bool WaterIndex::Open(const std::string& path, bool memoryMappedData)
   {
     datafilename=AppendFileToDir(path,WATER_IDX);
 
     try {
-      scanner.Open(datafilename,FileScanner::FastRandom,true);
+      scanner.Open(datafilename,FileScanner::FastRandom,memoryMappedData);
 
       scanner.ReadNumber(waterIndexMinMag);
       scanner.ReadNumber(waterIndexMaxMag);

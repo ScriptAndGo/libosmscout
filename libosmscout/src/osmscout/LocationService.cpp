@@ -17,325 +17,405 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307  USA
 */
 
-#include <algorithm>
-
 #include <osmscout/LocationService.h>
+
+#include <algorithm>
 
 #include <osmscout/util/Geometry.h>
 #include <osmscout/util/Logger.h>
 #include <osmscout/util/String.h>
 #include <osmscout/TypeFeatures.h>
-
+#include <iostream>
 namespace osmscout {
 
-  LocationCoordDescription::LocationCoordDescription(const GeoCoord& location)
-    : location(location)
+  /**
+   * Internal helper class to unite the parameter and thus the code for string based and form based
+   * location search.
+   */
+  struct SearchParameter CLASS_FINAL
+  {
+    bool                    searchForLocation;
+    bool                    searchForPOI;
+    bool                    adminRegionOnlyMatch;
+    bool                    poiOnlyMatch;
+    bool                    postalAreaOnlyMatch;
+    bool                    locationOnlyMatch;
+    bool                    addressOnlyMatch;
+
+    bool                    partialMatch;
+
+    StringMatcherFactoryRef stringMatcherFactory;
+
+    size_t                  limit;
+
+    SearchParameter() = default;
+  };
+
+  LocationFormSearchParameter::LocationFormSearchParameter()
+    : adminRegionOnlyMatch(false),
+      postalAreaOnlyMatch(false),
+      locationOnlyMatch(false),
+      addressOnlyMatch(false),
+      partialMatch(false),
+      stringMatcherFactory(std::make_shared<osmscout::StringMatcherCIFactory>()),
+      limit(100)
   {
     // no code
   }
 
-  GeoCoord LocationCoordDescription::GetLocation() const
+  size_t LocationFormSearchParameter::GetLimit() const
   {
-    return location;
+    return limit;
   }
 
-  LocationAtPlaceDescription::LocationAtPlaceDescription(const Place& place)
-  : place(place),
-    atPlace(true),
-    distance(0.0),
-    bearing(0.0)
+  StringMatcherFactoryRef LocationFormSearchParameter::GetStringMatcherFactory() const
   {
-    // no oce
+    return stringMatcherFactory;
   }
 
-  LocationAtPlaceDescription::LocationAtPlaceDescription(const Place& place,
-                                                         double distance,
-                                                         double bearing)
-  : place(place),
-    atPlace(false),
-    distance(distance),
-    bearing(bearing)
+  std::string LocationFormSearchParameter::GetAdminRegionSearchString() const
   {
-
+    return adminRegionSearchString;
   }
 
-  void LocationDescription::SetCoordDescription(const LocationCoordDescriptionRef& description)
+  std::string LocationFormSearchParameter::GetPostalAreaSearchString() const
   {
-    this->coordDescription=description;
+    return postalAreaSearchString;
   }
 
-  void LocationDescription::SetAtNameDescription(const LocationAtPlaceDescriptionRef& description)
+  std::string LocationFormSearchParameter::GetLocationSearchString() const
   {
-    this->atNameDescription=description;
+    return locationSearchString;
   }
 
-  void LocationDescription::SetAtAddressDescription(const LocationAtPlaceDescriptionRef& description)
+  std::string LocationFormSearchParameter::GetAddressSearchString() const
   {
-    this->atAddressDescription=description;
+    return addressSearchString;
   }
 
-  void LocationDescription::SetAtPOIDescription(const LocationAtPlaceDescriptionRef& description)
+  bool LocationFormSearchParameter::GetPartialMatch() const
   {
-    this->atPOIDescription=description;
+    return partialMatch;
   }
 
-  LocationCoordDescriptionRef LocationDescription::GetCoordDescription() const
+  void LocationFormSearchParameter::SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory)
   {
-    return coordDescription;
+    this->stringMatcherFactory=stringMatcherFactory;
   }
 
-  LocationAtPlaceDescriptionRef LocationDescription::GetAtNameDescription() const
+  void LocationFormSearchParameter::SetAdminRegionSearchString(const std::string& adminRegionSearchString)
   {
-    return atNameDescription;
+    LocationFormSearchParameter::adminRegionSearchString=adminRegionSearchString;
   }
 
-  LocationAtPlaceDescriptionRef LocationDescription::GetAtAddressDescription() const
+  void LocationFormSearchParameter::SetPostalAreaSearchString(const std::string& postalAreaSearchString)
   {
-    return atAddressDescription;
+    LocationFormSearchParameter::postalAreaSearchString=postalAreaSearchString;
   }
 
-  LocationAtPlaceDescriptionRef LocationDescription::GetAtPOIDescription() const
+  void LocationFormSearchParameter::SetLocationSearchString(const std::string& locationSearchString)
   {
-    return atPOIDescription;
+    LocationFormSearchParameter::locationSearchString=locationSearchString;
   }
 
-  LocationService::VisitorMatcher::VisitorMatcher(const std::string& searchPattern)
-  :pattern(searchPattern)
+  void LocationFormSearchParameter::SetAddressSearchString(const std::string& addressSearchString)
   {
-    TolowerUmlaut(pattern);
+    LocationFormSearchParameter::addressSearchString=addressSearchString;
   }
 
-  void LocationService::VisitorMatcher::Match(const std::string& name,
-                                              bool& match,
-                                              bool& candidate) const
+  void LocationFormSearchParameter::SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch)
   {
-    std::string            tmpname=name;
-    std::string::size_type matchPosition;
-
-    TolowerUmlaut(tmpname);
-
-    matchPosition=tmpname.find(pattern);
-
-    match=matchPosition==0 && tmpname.length()==pattern.length();
-    candidate=matchPosition!=std::string::npos;
+    this->adminRegionOnlyMatch=adminRegionOnlyMatch;
   }
 
-  void LocationService::VisitorMatcher::TolowerUmlaut(std::string& s) const
+  void LocationFormSearchParameter::SetPostalAreaOnlyMatch(bool postalAreaOnlyMatch)
   {
-    for (std::string::iterator it=s.begin();
-         it!=s.end();
-         ++it)
-    {
-      /* this filter matches all character from the table
-       * http://en.wikipedia.org/wiki/Latin-1_Supplement_%28Unicode_block%29#Compact_table
-       * beginning at U+0x00C0 to U+0x00DE
-       */
-      if((uint8_t)*it == 0xC3)
-      {
-        ++it;
-
-        if((uint8_t)*it>=0x80 && (uint8_t)*it<=0x9E) {
-          // 0x9F is german "sz" which is already small caps.
-          *it+=0x20;
-        }
-      }
-      else {
-        *it=tolower(*it);
-      }
-    }
+    this->postalAreaOnlyMatch=postalAreaOnlyMatch;
   }
 
-  LocationService::AdminRegionMatchVisitor::AdminRegionMatchVisitor(const std::string& pattern,
-                                                                    size_t limit)
-  : VisitorMatcher(pattern),
-    limit(limit),
-    limitReached(false)
+  void LocationFormSearchParameter::SetLocationOnlyMatch(bool locationOnlyMatch)
+  {
+    this->locationOnlyMatch=locationOnlyMatch;
+  }
+
+  void LocationFormSearchParameter::SetAddressOnlyMatch(bool addressOnlyMatch)
+  {
+    this->addressOnlyMatch=addressOnlyMatch;
+  }
+
+  bool LocationFormSearchParameter::GetAdminRegionOnlyMatch() const
+  {
+    return adminRegionOnlyMatch;
+  }
+
+  bool LocationFormSearchParameter::GetPostalAreaOnlyMatch() const
+  {
+    return postalAreaOnlyMatch;
+  }
+
+  bool LocationFormSearchParameter::GetLocationOnlyMatch() const
+  {
+    return locationOnlyMatch;
+  }
+
+  bool LocationFormSearchParameter::GetAddressOnlyMatch() const
+  {
+    return addressOnlyMatch;
+  }
+
+  void LocationFormSearchParameter::SetPartialMatch(bool partialMatch)
+  {
+    this->partialMatch=partialMatch;
+  }
+
+  void LocationFormSearchParameter::SetLimit(size_t limit)
+  {
+    this->limit=limit;
+  }
+
+  void LocationFormSearchParameter::SetBreaker(BreakerRef &breaker)
+  {
+    this->breaker=breaker;
+  }
+
+  BreakerRef LocationFormSearchParameter::GetBreaker() const
+  {
+    return breaker;
+  }
+
+  bool LocationFormSearchParameter::IsAborted() const
+  {
+    return breaker && breaker->IsAborted();
+  }
+
+  POIFormSearchParameter::POIFormSearchParameter()
+    : adminRegionOnlyMatch(false),
+      poiOnlyMatch(false),
+      partialMatch(false),
+      stringMatcherFactory(std::make_shared<osmscout::StringMatcherCIFactory>()),
+      limit(100)
   {
     // no code
   }
 
-  AdminRegionVisitor::Action LocationService::AdminRegionMatchVisitor::Visit(const AdminRegion& region)
+  size_t POIFormSearchParameter::GetLimit() const
   {
-    bool atLeastOneAliasMatch=false;
-
-    bool regionMatch;
-    bool regionCandidate;
-
-    Match(region.name,
-          regionMatch,
-          regionCandidate);
-
-    if (!regionMatch) {
-      for (const auto& alias : region.aliases) {
-        bool match;
-        bool candidate;
-
-        Match(alias.name,
-              match,
-              candidate);
-
-        if (match || candidate) {
-          AdminRegionResult result;
-
-          result.adminRegion=std::make_shared<AdminRegion>(region);
-          result.isMatch=match;
-
-          result.adminRegion->aliasName=alias.name;
-          result.adminRegion->aliasObject.Set(alias.objectOffset,refNode);
-
-          //std::cout << pattern << " => (alias) " << result.adminRegion->aliasName << " " << match << " " << regionCandidate << " " << std::endl;
-
-          results.push_back(result);
-
-          if (match) {
-            atLeastOneAliasMatch=true;
-          }
-
-          limitReached=results.size()>=limit;
-        }
-      }
-    }
-
-    // If we have a perfect match for an alias, we not not try to regionMatch
-    // the region name itself
-    if (!atLeastOneAliasMatch) {
-      if (regionMatch || regionCandidate) {
-        AdminRegionResult result;
-
-        result.adminRegion=std::make_shared<AdminRegion>(region);
-        result.isMatch=regionMatch;
-
-        //std::cout << pattern << " => (region) " << result.adminRegion->name << " " << regionMatch << " " << regionCandidate << std::endl;
-
-        results.push_back(result);
-      }
-    }
-
-    if (limitReached) {
-      return stop;
-    }
-    else {
-      return visitChildren;
-    }
+    return limit;
   }
 
-  LocationService::LocationMatchVisitor::LocationMatchVisitor(const AdminRegionRef& adminRegion,
-                                                              const std::string& pattern,
-                                                              size_t limit)
-  : VisitorMatcher(pattern),
-    limit(limit),
-    adminRegion(adminRegion),
-    limitReached(false)
+  StringMatcherFactoryRef POIFormSearchParameter::GetStringMatcherFactory() const
+  {
+    return stringMatcherFactory;
+  }
+
+  std::string POIFormSearchParameter::GetAdminRegionSearchString() const
+  {
+    return adminRegionSearchString;
+  }
+
+  std::string POIFormSearchParameter::GetPOISearchString() const
+  {
+    return poiSearchString;
+  }
+
+  bool POIFormSearchParameter::GetPartialMatch() const
+  {
+    return partialMatch;
+  }
+
+  void POIFormSearchParameter::SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory)
+  {
+    this->stringMatcherFactory=stringMatcherFactory;
+  }
+
+  void POIFormSearchParameter::SetAdminRegionSearchString(const std::string& adminRegionSearchString)
+  {
+    POIFormSearchParameter::adminRegionSearchString=adminRegionSearchString;
+  }
+
+  void POIFormSearchParameter::SetPOISearchString(const std::string& poiSearchString)
+  {
+    POIFormSearchParameter::poiSearchString=poiSearchString;
+  }
+
+  void POIFormSearchParameter::SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch)
+  {
+    this->adminRegionOnlyMatch=adminRegionOnlyMatch;
+  }
+
+  void POIFormSearchParameter::SetPOIOnlyMatch(bool poiOnlyMatch)
+  {
+    this->poiOnlyMatch=poiOnlyMatch;
+  }
+
+  bool POIFormSearchParameter::GetAdminRegionOnlyMatch() const
+  {
+    return adminRegionOnlyMatch;
+  }
+
+  bool POIFormSearchParameter::GetPOIOnlyMatch() const
+  {
+    return poiOnlyMatch;
+  }
+
+  void POIFormSearchParameter::SetPartialMatch(bool partialMatch)
+  {
+    this->partialMatch=partialMatch;
+  }
+
+  void POIFormSearchParameter::SetLimit(size_t limit)
+  {
+    this->limit=limit;
+  }
+
+  void POIFormSearchParameter::SetBreaker(BreakerRef &breaker)
+  {
+    this->breaker=breaker;
+  }
+
+  BreakerRef POIFormSearchParameter::GetBreaker() const
+  {
+    return breaker;
+  }
+
+  bool POIFormSearchParameter::IsAborted() const
+  {
+    return breaker && breaker->IsAborted();
+  }
+
+  LocationStringSearchParameter::LocationStringSearchParameter(const std::string& searchString)
+    : searchForLocation(true),
+      searchForPOI(true),
+      adminRegionOnlyMatch(false),
+      poiOnlyMatch(false),
+      locationOnlyMatch(false),
+      addressOnlyMatch(true),
+      partialMatch(false),
+      searchString(searchString),
+      stringMatcherFactory(std::make_shared<osmscout::StringMatcherCIFactory>()),
+      limit(100)
   {
     // no code
   }
 
-  bool LocationService::LocationMatchVisitor::Visit(const AdminRegion& adminRegion,
-                                                    const POI &poi)
+  std::string LocationStringSearchParameter::GetSearchString() const
   {
-    bool match;
-    bool candidate;
-
-    Match(poi.name,
-          match,
-          candidate);
-
-    if (match || candidate) {
-      POIResult result;
-
-      if (adminRegion.object==this->adminRegion->object) {
-        result.adminRegion=this->adminRegion;
-      }
-      else {
-        result.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-      }
-
-      result.poi=std::make_shared<POI>(poi);
-      result.isMatch=match;
-
-      poiResults.push_back(result);
-
-      limitReached=poiResults.size()+locationResults.size()>=limit;
-    }
-
-    return !limitReached;
+    return searchString;
   }
 
-  bool LocationService::LocationMatchVisitor::Visit(const AdminRegion& adminRegion,
-                                                    const Location &loc)
+  AdminRegionRef LocationStringSearchParameter::GetDefaultAdminRegion() const
   {
-    bool match;
-    bool candidate;
-
-    Match(loc.name,
-          match,
-          candidate);
-
-    if (match || candidate) {
-      LocationResult result;
-
-      if (adminRegion.object==this->adminRegion->object) {
-        result.adminRegion=this->adminRegion;
-      }
-      else {
-        result.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-      }
-
-      result.location=std::make_shared<Location>(loc);
-      result.isMatch=match;
-
-      locationResults.push_back(result);
-
-      //std::cout << pattern << " =>  " << result.location->name << " " << adminRegion.name << "/" << adminRegion.aliasName << " " << match << " " << candidate << " " << std::endl;
-
-      limitReached=poiResults.size()+locationResults.size()>=limit;
-    }
-
-    return !limitReached;
+    return defaultAdminRegion;
   }
 
-  LocationService::AddressMatchVisitor::AddressMatchVisitor(const std::string& pattern,
-                                                            size_t limit)
-  : VisitorMatcher(pattern),
-    limit(limit),
-    limitReached(false)
+  size_t LocationStringSearchParameter::GetLimit() const
   {
-    // no code
+    return limit;
   }
 
-  bool LocationService::AddressMatchVisitor::Visit(const AdminRegion& adminRegion,
-                                                   const Location& location,
-                                                   const Address& address)
+  void LocationStringSearchParameter::SetDefaultAdminRegion(const AdminRegionRef& adminRegion)
   {
-    bool match;
-    bool candidate;
-
-    Match(address.name,
-          match,
-          candidate);
-
-    if (match || candidate) {
-      AddressResult result;
-
-      result.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-      result.location=std::make_shared<Location>(location);
-      result.address=std::make_shared<Address>(address);
-      result.isMatch=match;
-
-      //std::cout << pattern << " =>  " << result.address->name << " " << result.address->postalCode << " " << location.name << " " << adminRegion.name << "/" << adminRegion.aliasName << " " << match << " " << candidate << " " << std::endl;
-
-      results.push_back(result);
-
-      limitReached=results.size()>=limit;
-    }
-
-    return !limitReached;
+    this->defaultAdminRegion=adminRegion;
   }
 
-  LocationSearch::LocationSearch()
-  : limit(50)
+  void LocationStringSearchParameter::SetLimit(size_t limit)
   {
-    // no code
+    this->limit=limit;
+  }
+
+  void LocationStringSearchParameter::SetBreaker(BreakerRef &breaker)
+  {
+    this->breaker=breaker;
+  }
+
+  BreakerRef LocationStringSearchParameter::GetBreaker() const
+  {
+    return breaker;
+  }
+
+  bool LocationStringSearchParameter::IsAborted() const
+  {
+    return breaker && breaker->IsAborted();
+  }
+
+  StringMatcherFactoryRef LocationStringSearchParameter::GetStringMatcherFactory() const
+  {
+    return stringMatcherFactory;
+  }
+
+  void LocationStringSearchParameter::SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory)
+  {
+    this->stringMatcherFactory=stringMatcherFactory;
+  }
+
+  bool LocationStringSearchParameter::GetSearchForLocation() const
+  {
+    return searchForLocation;
+  }
+
+  bool LocationStringSearchParameter::GetSearchForPOI() const
+  {
+    return searchForPOI;
+  }
+
+  void LocationStringSearchParameter::SetSearchForLocation(bool searchForLocation)
+  {
+    this->searchForLocation=searchForLocation;
+  }
+
+  void LocationStringSearchParameter::SetSearchForPOI(bool searchForPOI)
+  {
+    this->searchForPOI=searchForPOI;
+  }
+
+  void LocationStringSearchParameter::SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch)
+  {
+    this->adminRegionOnlyMatch=adminRegionOnlyMatch;
+  }
+
+  void LocationStringSearchParameter::SetPOIOnlyMatch(bool poiOnlyMatch)
+  {
+    this->poiOnlyMatch=poiOnlyMatch;
+  }
+
+  void LocationStringSearchParameter::SetLocationOnlyMatch(bool locationOnlyMatch)
+  {
+    this->locationOnlyMatch=locationOnlyMatch;
+  }
+
+  void LocationStringSearchParameter::SetAddressOnlyMatch(bool addressOnlyMatch)
+  {
+    this->addressOnlyMatch=addressOnlyMatch;
+  }
+
+  void LocationStringSearchParameter::SetPartialMatch(bool partialMatch)
+  {
+    this->partialMatch=partialMatch;
+  }
+
+  bool LocationStringSearchParameter::GetAdminRegionOnlyMatch() const
+  {
+    return adminRegionOnlyMatch;
+  }
+
+  bool LocationStringSearchParameter::GetPOIOnlyMatch() const
+  {
+    return poiOnlyMatch;
+  }
+
+  bool LocationStringSearchParameter::GetLocationOnlyMatch() const
+  {
+    return locationOnlyMatch;
+  }
+
+  bool LocationStringSearchParameter::GetAddressOnlyMatch() const
+  {
+    return addressOnlyMatch;
+  }
+
+  bool LocationStringSearchParameter::GetPartialMatch() const
+  {
+    return partialMatch;
   }
 
   bool LocationSearchResult::Entry::operator<(const Entry& other) const
@@ -343,28 +423,43 @@ namespace osmscout {
     if (adminRegionMatchQuality!=other.adminRegionMatchQuality) {
       return adminRegionMatchQuality<other.adminRegionMatchQuality;
     }
-    else if (locationMatchQuality!=other.locationMatchQuality) {
+
+    if (postalAreaMatchQuality!=other.postalAreaMatchQuality) {
+      return postalAreaMatchQuality<other.postalAreaMatchQuality;
+    }
+
+    if (locationMatchQuality!=other.locationMatchQuality) {
       return locationMatchQuality<other.locationMatchQuality;
     }
-    else if (addressMatchQuality!=other.addressMatchQuality) {
+
+    if (addressMatchQuality!=other.addressMatchQuality) {
       return addressMatchQuality<other.addressMatchQuality;
     }
-    else if (poiMatchQuality!=other.poiMatchQuality) {
+
+    if (poiMatchQuality!=other.poiMatchQuality) {
       return poiMatchQuality<other.poiMatchQuality;
     }
-    else if (adminRegion && other.adminRegion &&
+
+    if (adminRegion && other.adminRegion &&
         adminRegion->name!=other.adminRegion->name) {
       return adminRegion->name<other.adminRegion->name;
     }
-    else if (location && other.location &&
+    if (postalArea && other.postalArea &&
+        postalArea->name!=other.postalArea->name) {
+      return postalArea->name<other.postalArea->name;
+    }
+
+    if (location && other.location &&
         location->name!=other.location->name) {
       return location->name<other.location->name;
     }
-    else if (address && other.address &&
+
+    if (address && other.address &&
         address->name!=other.address->name) {
       return address->name<other.address->name;
     }
-    else if (poi && other.poi &&
+
+    if (poi && other.poi &&
         poi->name!=other.poi->name) {
       return poi->name<other.poi->name;
     }
@@ -385,6 +480,17 @@ namespace osmscout {
       }
 
       if (adminRegion->object!=other.adminRegion->object) {
+        return false;
+      }
+    }
+
+    if ((postalArea && !other.postalArea) ||
+        (!postalArea && other.postalArea)) {
+      return false;
+    }
+
+    if (postalArea && other.postalArea) {
+      if (postalArea->name!=other.postalArea->name) {
         return false;
       }
     }
@@ -437,73 +543,6 @@ namespace osmscout {
     assert(database);
   }
 
-  const FeatureValueBufferRef LocationService::GetObjectFeatureBuffer(const ObjectFileRef &object)
-  {
-    FeatureValueBufferRef objectFeatureBuff;
-    NodeRef node;
-    WayRef way;
-    AreaRef area;
-    switch (object.GetType()){
-      case refNode:
-        if (database->GetNodeByOffset(object.GetFileOffset(), node)) {
-          objectFeatureBuff = std::make_shared<FeatureValueBuffer>();
-          objectFeatureBuff->Set(node->GetFeatureValueBuffer());
-        }
-        break;
-      case refWay:
-        if (database->GetWayByOffset(object.GetFileOffset(), way)) {
-          objectFeatureBuff = std::make_shared<FeatureValueBuffer>();
-          objectFeatureBuff->Set(way->GetFeatureValueBuffer());
-        }
-        break;
-      case refArea:
-        if (database->GetAreaByOffset(object.GetFileOffset(), area)) {
-          objectFeatureBuff = std::make_shared<FeatureValueBuffer>();
-          objectFeatureBuff->Set(area->GetFeatureValueBuffer());
-        }
-        break;
-      case refNone:
-      default:
-        /* do nothing */
-        break;
-    }
-    return objectFeatureBuff;
-  }
-
-  Place LocationService::GetPlace(const std::list<ReverseLookupResult>& lookupResult)
-  {
-    ObjectFileRef  object=lookupResult.front().object;
-    AdminRegionRef adminRegion;
-    POIRef         poi;
-    LocationRef    location;
-    AddressRef     address;
-
-    for (const auto& entry : lookupResult) {
-      if (entry.adminRegion && !adminRegion) {
-        adminRegion=entry.adminRegion;
-      }
-
-      if (entry.poi && !poi) {
-        poi=entry.poi;
-      }
-
-      if (entry.location && !location) {
-        location=entry.location;
-      }
-
-      if (entry.address && !address) {
-        address=entry.address;
-      }
-    }
-
-    return Place(object,
-                 GetObjectFeatureBuffer(object),
-                 adminRegion,
-                 poi,
-                 location,
-                 address);
-  }
-
   /**
    * Call the given visitor for each region in the index (deep first)
    *
@@ -521,54 +560,6 @@ namespace osmscout {
     }
 
     return locationIndex->VisitAdminRegions(visitor);
-  }
-
-  /**
-   * Visit the location at the given region and all its sub regions.
-   * @param region
-   *    Region to start at
-   * @param visitor
-   *    Visitor
-   * @return
-   *    True, if there was no error
-   */
-  bool LocationService::VisitAdminRegionLocations(const AdminRegion& region,
-                                                  LocationVisitor& visitor) const
-  {
-    LocationIndexRef locationIndex=database->GetLocationIndex();
-
-    if (!locationIndex) {
-      return false;
-    }
-
-    return locationIndex->VisitAdminRegionLocations(region,
-                                                    visitor);
-  }
-
-  /**
-   * Visit all addresses at the given location
-   * @param region
-   *    Region the location belongs to
-   * @param location
-   *    The location itself
-   * @param visitor
-   *    The Visitor
-   * @return
-   *    True, if there was no error
-   */
-  bool LocationService::VisitLocationAddresses(const AdminRegion& region,
-                                               const Location& location,
-                                               AddressVisitor& visitor) const
-  {
-    LocationIndexRef locationIndex=database->GetLocationIndex();
-
-    if (!locationIndex) {
-      return false;
-    }
-
-    return locationIndex->VisitLocationAddresses(region,
-                                                 location,
-                                                 visitor);
   }
 
   /**
@@ -596,251 +587,18 @@ namespace osmscout {
                                                       refs);
   }
 
-  bool LocationService::HandleAdminRegion(const LocationSearch& search,
-                                          const LocationSearch::Entry& searchEntry,
-                                          const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                          LocationSearchResult& result) const
-  {
-    if (searchEntry.locationPattern.empty()) {
-      LocationSearchResult::Entry entry;
-
-      entry.adminRegion=adminRegionResult.adminRegion;
-
-      if (adminRegionResult.isMatch) {
-        entry.adminRegionMatchQuality=LocationSearchResult::match;
-      }
-      else {
-        entry.adminRegionMatchQuality=LocationSearchResult::candidate;
-      }
-
-      entry.locationMatchQuality=LocationSearchResult::none;
-      entry.poiMatchQuality=LocationSearchResult::none;
-      entry.addressMatchQuality=LocationSearchResult::none;
-
-      result.results.push_back(entry);
-
-      return true;
-    }
-
-    //std::cout << "  Search for location '" << searchEntry.locationPattern << "'" << " in " << adminRegionResult.adminRegion->name << "/" << adminRegionResult.adminRegion->aliasName << std::endl;
-
-    LocationMatchVisitor visitor(adminRegionResult.adminRegion,
-                                 searchEntry.locationPattern,
-                                 search.limit>=result.results.size() ? search.limit-result.results.size() : 0);
-
-
-    if (!VisitAdminRegionLocations(*adminRegionResult.adminRegion,
-                                   visitor)) {
-      log.Error() << "Error during traversal of region location list";
-      return false;
-    }
-
-    if (visitor.poiResults.empty() &&
-        visitor.locationResults.empty()) {
-      // If we search for a location within an area,
-      // we do not return the found area as hit, if we
-      // did not find the location in it.
-      return true;
-    }
-
-    for (const auto& poiResult : visitor.poiResults) {
-      if (!HandleAdminRegionPOI(search,
-                                adminRegionResult,
-                                poiResult,
-                                result)) {
-        log.Error() << "Error during traversal of region poi list";
-        return false;
-      }
-    }
-
-    for (const auto& locationResult : visitor.locationResults) {
-      //std::cout << "  - '" << locationResult->location->name << "'" << std::endl;
-      if (!HandleAdminRegionLocation(search,
-                                     searchEntry,
-                                     adminRegionResult,
-                                     locationResult,
-                                     result)) {
-        log.Error() << "Error during traversal of region location list";
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  bool LocationService::HandleAdminRegionLocation(const LocationSearch& search,
-                                                  const LocationSearch::Entry& searchEntry,
-                                                  const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                                  const LocationMatchVisitor::LocationResult& locationResult,
-                                                  LocationSearchResult& result) const
-  {
-    if (searchEntry.addressPattern.empty()) {
-      LocationSearchResult::Entry entry;
-
-      entry.adminRegion=locationResult.adminRegion;
-      entry.location=locationResult.location;
-
-      if (adminRegionResult.isMatch) {
-        entry.adminRegionMatchQuality=LocationSearchResult::match;
-      }
-      else {
-        entry.adminRegionMatchQuality=LocationSearchResult::candidate;
-      }
-
-      if (locationResult.isMatch) {
-        entry.locationMatchQuality=LocationSearchResult::match;
-      }
-      else {
-        entry.locationMatchQuality=LocationSearchResult::candidate;
-      }
-
-      entry.poiMatchQuality=LocationSearchResult::none;
-      entry.addressMatchQuality=LocationSearchResult::none;
-
-      result.results.push_back(entry);
-
-      return true;
-    }
-
-    //std::cout << "    Search for address '" << searchEntry.addressPattern << "'" << std::endl;
-
-    AddressMatchVisitor visitor(searchEntry.addressPattern,
-                                search.limit>=result.results.size() ? search.limit-result.results.size() : 0);
-
-
-    if (!VisitLocationAddresses(*locationResult.adminRegion,
-                                *locationResult.location,
-                                visitor)) {
-      log.Error() << "Error during traversal of region location address list";
-      return false;
-    }
-
-    if (visitor.results.empty()) {
-      LocationSearchResult::Entry entry;
-
-      entry.adminRegion=locationResult.adminRegion;
-      entry.location=locationResult.location;
-
-      if (adminRegionResult.isMatch) {
-        entry.adminRegionMatchQuality=LocationSearchResult::match;
-      }
-      else {
-        entry.adminRegionMatchQuality=LocationSearchResult::candidate;
-      }
-
-      if (locationResult.isMatch) {
-        entry.locationMatchQuality=LocationSearchResult::match;
-      }
-      else {
-        entry.locationMatchQuality=LocationSearchResult::candidate;
-      }
-
-      entry.poiMatchQuality=LocationSearchResult::none;
-      entry.addressMatchQuality=LocationSearchResult::none;
-
-      result.results.push_back(entry);
-
-      return true;
-    }
-
-    for (const auto& addressResult : visitor.results) {
-      //std::cout << "    - '" << addressResult->address->name << "'" << std::endl;
-      if (!HandleAdminRegionLocationAddress(search,
-                                            adminRegionResult,
-                                            locationResult,
-                                            addressResult,
-                                            result)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  bool LocationService::HandleAdminRegionPOI(const LocationSearch& /*search*/,
-                                             const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                             const LocationMatchVisitor::POIResult& poiResult,
-                                             LocationSearchResult& result) const
-  {
-    LocationSearchResult::Entry entry;
-
-    entry.adminRegion=adminRegionResult.adminRegion;
-    entry.poi=poiResult.poi;
-
-    if (adminRegionResult.isMatch) {
-      entry.adminRegionMatchQuality=LocationSearchResult::match;
-    }
-    else {
-      entry.adminRegionMatchQuality=LocationSearchResult::candidate;
-    }
-
-    if (poiResult.isMatch) {
-      entry.poiMatchQuality=LocationSearchResult::match;
-    }
-    else {
-      entry.poiMatchQuality=LocationSearchResult::candidate;
-    }
-
-    entry.locationMatchQuality=LocationSearchResult::none;
-    entry.addressMatchQuality=LocationSearchResult::none;
-
-    result.results.push_back(entry);
-
-    return true;
-  }
-
-  bool LocationService::HandleAdminRegionLocationAddress(const LocationSearch& /*search*/,
-                                                         const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                                         const LocationMatchVisitor::LocationResult& locationResult,
-                                                         const AddressMatchVisitor::AddressResult& addressResult,
-                                                         LocationSearchResult& result) const
-  {
-    LocationSearchResult::Entry entry;
-
-    entry.adminRegion=locationResult.adminRegion;
-    entry.location=addressResult.location;
-    entry.address=addressResult.address;
-
-    if (adminRegionResult.isMatch) {
-      entry.adminRegionMatchQuality=LocationSearchResult::match;
-    }
-    else {
-      entry.adminRegionMatchQuality=LocationSearchResult::candidate;
-    }
-
-    if (locationResult.isMatch) {
-      entry.locationMatchQuality=LocationSearchResult::match;
-    }
-    else {
-      entry.locationMatchQuality=LocationSearchResult::candidate;
-    }
-
-    entry.poiMatchQuality=LocationSearchResult::none;
-
-    if (addressResult.isMatch) {
-      entry.addressMatchQuality=LocationSearchResult::match;
-    }
-    else {
-      entry.addressMatchQuality=LocationSearchResult::candidate;
-    }
-
-    result.results.push_back(entry);
-
-    return true;
-  }
-
   /**
-   * This takes the given pattern, splits it into tokens,
-   * and generates a number of search entries based on the idea
-   * that the input follows one of the following patterns:
-   * - AdminRegion Location Address
-   * - Location Address AdminRegion
-   * - AdminRegion Location
-   * - Location AdminRegion
-   * - AdminRegion
+   * Visit the location at the given region and all its sub regions.
+   * @param region
+   *    Region to start at
+   * @param visitor
+   *    Visitor
+   * @return
+   *    True, if there was no error
    */
-  bool LocationService::InitializeLocationSearchEntries(const std::string& searchPattern,
-                                                        LocationSearch& locationSearch)
+  bool LocationService::VisitAdminRegionLocations(const AdminRegion& region,
+                                                  const PostalArea& postalArea,
+                                                  LocationVisitor& visitor) const
   {
     LocationIndexRef locationIndex=database->GetLocationIndex();
 
@@ -848,9 +606,1280 @@ namespace osmscout {
       return false;
     }
 
-    std::list<std::string> tokens;
+    return locationIndex->VisitLocations(region,
+                                         postalArea,
+                                         visitor);
+  }
 
-    locationSearch.searches.clear();
+  /**
+   * Visit the POIs at the given region and all its sub regions.
+   * @param region
+   *    Region to start at
+   * @param visitor
+   *    Visitor
+   * @return
+   *    True, if there was no error
+   */
+  bool LocationService::VisitAdminRegionPOIs(const AdminRegion& region,
+                                             POIVisitor& visitor) const
+  {
+    LocationIndexRef locationIndex=database->GetLocationIndex();
+
+    if (!locationIndex) {
+      return false;
+    }
+
+    return locationIndex->VisitPOIs(region,
+                                    visitor);
+  }
+
+  /**
+   * Visit all addresses at the given location
+   * @param region
+   *    Region the location belongs to
+   * @param location
+   *    The location itself
+   * @param visitor
+   *    The Visitor
+   * @return
+   *    True, if there was no error
+   */
+  bool LocationService::VisitLocationAddresses(const AdminRegion& region,
+                                               const PostalArea& postalArea,
+                                               const Location& location,
+                                               AddressVisitor& visitor) const
+  {
+    LocationIndexRef locationIndex=database->GetLocationIndex();
+
+    if (!locationIndex) {
+      return false;
+    }
+
+    return locationIndex->VisitAddresses(region,
+                                         postalArea,
+                                         location,
+                                         visitor);
+  }
+
+  struct TokenString
+  {
+    size_t      start;
+    size_t      length;
+    std::string text;
+
+    TokenString(size_t start,
+                size_t length,
+                const std::string& text)
+    : start(start),
+      length(length),
+      text(text)
+    {
+      // no code
+    }
+
+    explicit TokenString(const std::string& text)
+      : start(0),
+        length(text.length()),
+        text(text)
+    {
+      // no code
+    }
+  };
+
+  typedef std::shared_ptr<TokenString> TokenStringRef;
+
+  struct TokenSearch
+  {
+    TokenStringRef   tokenString;
+    StringMatcherRef matcher;
+
+    TokenSearch(const TokenStringRef& tokenString,
+               const StringMatcherRef& matcher)
+    : tokenString(tokenString),
+      matcher(matcher)
+    {
+      // no code
+    }
+  };
+
+
+  class AdminRegionSearchVisitor : public AdminRegionVisitor
+  {
+  public:
+    struct Result
+    {
+      TokenStringRef tokenString;
+      AdminRegionRef adminRegion;
+      std::string    name;
+
+      Result(const TokenStringRef& tokenString,
+             const AdminRegionRef& adminRegion,
+             const std::string& name)
+        : tokenString(tokenString),
+          adminRegion(adminRegion),
+          name(name)
+      {
+        // no code
+      }
+    };
+
+  public:
+    std::list<TokenSearch> patterns;
+    std::list<Result>      matches;
+    std::list<Result>      partialMatches;
+
+  public:
+    AdminRegionSearchVisitor(const StringMatcherFactoryRef& matcherFactory,
+                             const std::list<TokenStringRef>& patterns)
+    {
+      for (const auto& pattern : patterns) {
+        this->patterns.emplace_back(pattern,
+                                    matcherFactory->CreateMatcher(pattern->text));
+      }
+    }
+
+    Action Visit(const AdminRegion& region) override
+    {
+      for (const auto& pattern : patterns) {
+        StringMatcher::Result matchResult=pattern.matcher->Match(region.name);
+
+        if (matchResult==StringMatcher::match) {
+          //std::cout << "Match of pattern " << pattern.tokenString->text << " against region name '" << region.name << "'" << std::endl;
+          matches.emplace_back(pattern.tokenString,
+                               std::make_shared<AdminRegion>(region),
+                               region.name);
+
+        }
+        else if (matchResult==StringMatcher::partialMatch) {
+          //std::cout << "Partial match of pattern " << pattern.tokenString->text << " against region name '" << region.name << "'" << std::endl;
+          partialMatches.emplace_back(pattern.tokenString,
+                                      std::make_shared<AdminRegion>(region),
+                                      region.name);
+        }
+
+        if (matchResult!=StringMatcher::match) {
+          for (const auto& alias : region.aliases) {
+            matchResult=pattern.matcher->Match(alias.name);
+
+            if (matchResult==StringMatcher::match) {
+              //std::cout << "Match of pattern " << pattern.tokenString->text << " against region alias '" << region.name << "' '" << alias.name << "'" << std::endl;
+              matches.emplace_back(pattern.tokenString,
+                                          std::make_shared<AdminRegion>(region),
+                                          alias.name);
+              break;
+            }
+            else if (matchResult==StringMatcher::partialMatch) {
+              //std::cout << "Partial match of pattern " << pattern.tokenString->text << " against region alias '" << region.name << "' '" << alias.name << "'" << std::endl;
+              partialMatches.emplace_back(pattern.tokenString,
+                                          std::make_shared<AdminRegion>(region),
+                                          alias.name);
+            }
+          }
+        }
+      }
+
+      return visitChildren;
+    }
+  };
+
+  class PostalAreaSearchVisitor : public AdminRegionVisitor
+  {
+  public:
+    struct Result
+    {
+      TokenStringRef tokenString;
+      AdminRegionRef adminRegion;
+      PostalAreaRef  postalArea;
+      std::string    name;
+
+      Result(const TokenStringRef& tokenString,
+             const AdminRegionRef& adminRegion,
+             const PostalAreaRef& postalArea,
+             const std::string& name)
+        : tokenString(tokenString),
+          adminRegion(adminRegion),
+          postalArea(postalArea),
+          name(name)
+      {
+        // no code
+      }
+    };
+
+  public:
+    std::list<TokenSearch> patterns;
+    std::list<Result>      matches;
+    std::list<Result>      partialMatches;
+    BreakerRef             breaker;
+
+  public:
+    PostalAreaSearchVisitor(const StringMatcherFactoryRef& matcherFactory,
+                            const std::list<TokenStringRef>& patterns,
+                            BreakerRef &breaker):
+      breaker(breaker)
+    {
+      for (const auto& pattern : patterns) {
+        this->patterns.emplace_back(pattern,
+                                    matcherFactory->CreateMatcher(pattern->text));
+      }
+    }
+
+    Action Visit(const AdminRegion& region) override
+    {
+      //std::cout << "Visiting admin region: " << region.name << std::endl;
+
+      for (const auto& area : region.postalAreas) {
+        if (patterns.empty()) {
+          //std::cout << "Match postal area name '" << area.name << "'" << std::endl;
+          matches.emplace_back(std::make_shared<TokenString>(0,0,""),
+                                      std::make_shared<AdminRegion>(region),
+                                      std::make_shared<PostalArea>(area),
+                                      area.name);
+        }
+        else {
+          for (const auto& pattern : patterns) {
+            StringMatcher::Result matchResult;
+
+            if (area.name.empty()) {
+              // the empty postal area always matches any pattern
+              matchResult=StringMatcher::match;
+            }
+            else {
+              matchResult=pattern.matcher->Match(area.name);
+            }
+
+            if (matchResult==StringMatcher::match) {
+              //std::cout << "Match postal area name '" << area.name << "'" << std::endl;
+              matches.emplace_back(pattern.tokenString,
+                                   std::make_shared<AdminRegion>(region),
+                                   std::make_shared<PostalArea>(area),
+                                   area.name);
+
+            }
+            else if (matchResult==StringMatcher::partialMatch) {
+              //std::cout << "Partial match postal area name '" << area.name << "'" << std::endl;
+              partialMatches.emplace_back(pattern.tokenString,
+                                          std::make_shared<AdminRegion>(region),
+                                          std::make_shared<PostalArea>(area),
+                                          area.name);
+            }
+          }
+        }
+      }
+
+      if (breaker && breaker->IsAborted()) {
+        return stop;
+      }
+
+      return visitChildren;
+    }
+  };
+
+  class POISearchVisitor : public POIVisitor
+  {
+  public:
+    struct Result
+    {
+      const TokenStringRef tokenString;
+      const AdminRegionRef adminRegion;
+      const POIRef         poi;
+
+      Result(const TokenStringRef& tokenString,
+             const AdminRegionRef& adminRegion,
+             const POIRef& poi)
+        : tokenString(tokenString),
+          adminRegion(adminRegion),
+          poi(poi)
+      {
+        // no code
+      }
+    };
+
+  public:
+    std::list<TokenSearch> patterns;
+    std::list<Result>      matches;
+    std::list<Result>      partialMatches;
+    BreakerRef             breaker;
+
+  public:
+    POISearchVisitor(const StringMatcherFactoryRef& matcherFactory,
+                     const std::list<TokenStringRef>& patterns,
+                     BreakerRef &breaker):
+        breaker(breaker)
+    {
+      for (const auto& pattern : patterns) {
+        this->patterns.emplace_back(pattern,
+                                    matcherFactory->CreateMatcher(pattern->text));
+      }
+    }
+
+    bool Visit(const AdminRegion& adminRegion,
+               const POI& poi) override
+    {
+      for (const auto& pattern : patterns) {
+        std::cout << pattern.tokenString->text << " vs. " << poi.name << std::endl;
+        StringMatcher::Result matchResult=pattern.matcher->Match(poi.name);
+
+        if (matchResult==StringMatcher::match) {
+          std::cout << " => match" << std::endl;
+          matches.emplace_back(pattern.tokenString,
+                               std::make_shared<AdminRegion>(adminRegion),
+                               std::make_shared<POI>(poi));
+        }
+        else if (matchResult==StringMatcher::partialMatch) {
+          std::cout << " => partial match" << std::endl;
+          partialMatches.emplace_back(pattern.tokenString,
+                                      std::make_shared<AdminRegion>(adminRegion),
+                                      std::make_shared<POI>(poi));
+        }
+      }
+
+      return !(breaker && breaker->IsAborted());
+    }
+  };
+
+  class LocationSearchVisitor : public LocationVisitor
+  {
+  public:
+    struct Result
+    {
+      const TokenStringRef tokenString;
+      const AdminRegionRef adminRegion;
+      const PostalAreaRef  postalArea;
+      const LocationRef    location;
+
+      Result(const TokenStringRef& tokenString,
+             const AdminRegionRef& adminRegion,
+             const PostalAreaRef& postalArea,
+             const LocationRef& location)
+        : tokenString(tokenString),
+          adminRegion(adminRegion),
+          postalArea(postalArea),
+          location(location)
+      {
+        // no code
+      }
+    };
+
+  public:
+    std::list<TokenSearch> patterns;
+    std::list<Result>      matches;
+    std::list<Result>      partialMatches;
+    BreakerRef             breaker;
+
+  public:
+    LocationSearchVisitor(const StringMatcherFactoryRef& matcherFactory,
+                          const std::list<TokenStringRef>& patterns,
+                          BreakerRef &breaker):
+      breaker(breaker)
+    {
+      for (const auto& pattern : patterns) {
+        this->patterns.emplace_back(pattern,
+                                    matcherFactory->CreateMatcher(pattern->text));
+      }
+    }
+
+    bool Visit(const AdminRegion& adminRegion,
+               const PostalArea& postalArea,
+               const Location& location) override
+    {
+      //std::cout << "Visiting " << adminRegion.name << " " << postalArea.name << "..." << std::endl;
+
+      for (const auto& pattern : patterns) {
+        StringMatcher::Result matchResult=pattern.matcher->Match(location.name);
+
+        if (matchResult==StringMatcher::match) {
+          //std::cout << "Match location name '" << location.name << "'" << std::endl;
+          matches.emplace_back(pattern.tokenString,
+                               std::make_shared<AdminRegion>(adminRegion),
+                               std::make_shared<PostalArea>(postalArea),
+                               std::make_shared<Location>(location));
+        }
+        else if (matchResult==StringMatcher::partialMatch) {
+          //std::cout << "Partial match location name '" << location.name << "'" << std::endl;
+          partialMatches.emplace_back(pattern.tokenString,
+                                      std::make_shared<AdminRegion>(adminRegion),
+                                      std::make_shared<PostalArea>(postalArea),
+                                      std::make_shared<Location>(location));
+        }
+      }
+
+      return !(breaker && breaker->IsAborted());
+    }
+  };
+
+  class AddressSearchVisitor : public AddressVisitor
+  {
+  public:
+    struct Result
+    {
+      const TokenStringRef tokenString;
+      const AdminRegionRef adminRegion;
+      const PostalAreaRef  postalArea;
+      const LocationRef    location;
+      const AddressRef     address;
+
+      Result(const TokenStringRef& tokenString,
+             const AdminRegionRef& adminRegion,
+             const PostalAreaRef& postalArea,
+             const LocationRef& location,
+             const AddressRef& address)
+        : tokenString(tokenString),
+          adminRegion(adminRegion),
+          postalArea(postalArea),
+          location(location),
+          address(address)
+      {
+        // no code
+      }
+    };
+
+  public:
+    std::list<TokenSearch> patterns;
+    std::list<Result>      matches;
+    std::list<Result>      partialMatches;
+
+  public:
+    AddressSearchVisitor(const StringMatcherFactoryRef& matcherFactory,
+                         const std::list<TokenStringRef>& patterns)
+    {
+      for (const auto& pattern : patterns) {
+        this->patterns.emplace_back(pattern,
+                                    matcherFactory->CreateMatcher(pattern->text));
+      }
+    }
+
+    bool Visit(const AdminRegion& adminRegion,
+               const PostalArea& postalArea,
+               const Location& location,
+               const Address& address) override
+    {
+      for (const auto& pattern : patterns) {
+        StringMatcher::Result matchResult=pattern.matcher->Match(address.name);
+
+        if (matchResult==StringMatcher::match) {
+          //std::cout << "Match region name '" << region.name << "'" << std::endl;
+          matches.emplace_back(pattern.tokenString,
+                               std::make_shared<AdminRegion>(adminRegion),
+                               std::make_shared<PostalArea>(postalArea),
+                               std::make_shared<Location>(location),
+                               std::make_shared<Address>(address));
+        }
+        else if (matchResult==StringMatcher::partialMatch) {
+          //std::cout << "Partial match region name '" << region.name << "'" << std::endl;
+          partialMatches.emplace_back(pattern.tokenString,
+                                      std::make_shared<AdminRegion>(adminRegion),
+                                      std::make_shared<PostalArea>(postalArea),
+                                      std::make_shared<Location>(location),
+                                      std::make_shared<Address>(address));
+        }
+      }
+
+      return true;
+    }
+  };
+
+  /**
+   * Return a list of token by removing tokenString from the given token list (tokens).
+   * @param tokenString
+   *    Token to remove
+   * @param tokens
+   *    List to rmeove token parameter from
+   * @return
+   *    New list
+   */
+  static std::list<std::string> BuildStringListFromSubToken(const TokenStringRef& tokenString,
+                                                            const std::list<std::string>& tokens)
+  {
+    std::list<std::string> result;
+
+    if (tokenString->start==0) {
+      auto tokenStartIter=tokens.begin();
+
+      std::advance(tokenStartIter,tokenString->length);
+
+      result.insert(result.begin(),tokenStartIter,tokens.end());
+    }
+    else {
+      auto tokenEndIter=tokens.begin();
+
+      std::advance(tokenEndIter,tokenString->start);
+
+      result.insert(result.begin(),tokens.begin(),tokenEndIter);
+    }
+
+    return result;
+  }
+
+  static void CleanupSearchPatterns(std::list<TokenStringRef>& patterns)
+  {
+    patterns.sort([](const TokenStringRef& a, const TokenStringRef& b) {
+      return a->text.length()>b->text.length();
+    });
+
+    patterns.unique([](const TokenStringRef& a, const TokenStringRef& b) {
+      return a->text==b->text;
+    });
+  }
+
+  static std::list<TokenStringRef> GenerateSearchPatterns(const std::list<std::string>& tokens,
+                                                          const std::unordered_set<std::string>& patternExclusions,
+                                                          size_t maxWords)
+  {
+    std::list<TokenStringRef> patterns;
+
+    for (size_t i=1; i<=std::min(tokens.size(),maxWords); i++) {
+      std::string searchExpression=GetTokensFromStart(tokens,i);
+
+      if (patternExclusions.find(UTF8StringToUpper(searchExpression))!=patternExclusions.end()) {
+        continue;
+      }
+
+      patterns.push_back(std::make_shared<TokenString>(0,i,searchExpression));
+    }
+
+    for (size_t i=1; i<=std::min(tokens.size(),(size_t) maxWords); i++) {
+      std::string searchExpression=GetTokensFromEnd(tokens,i);
+
+      if (patternExclusions.find(UTF8StringToUpper(searchExpression))!=patternExclusions.end()) {
+        continue;
+      }
+
+      patterns.push_back(std::make_shared<TokenString>(tokens.size()-i,i,searchExpression));
+    }
+
+    return patterns;
+  }
+
+  static void AddRegionResult(const SearchParameter& parameter,
+                              LocationSearchResult::MatchQuality regionMatchQuality,
+                              const AdminRegionSearchVisitor::Result& regionMatch,
+                              LocationSearchResult& result)
+  {
+    if (result.results.size()>parameter.limit) {
+      result.limitReached=true;
+    }
+    else {
+      LocationSearchResult::Entry entry;
+
+      entry.adminRegion=regionMatch.adminRegion;
+      entry.adminRegionMatchQuality=regionMatchQuality;
+      entry.poiMatchQuality=LocationSearchResult::none;
+      entry.postalAreaMatchQuality=LocationSearchResult::none;
+      entry.locationMatchQuality=LocationSearchResult::none;
+      entry.addressMatchQuality=LocationSearchResult::none;
+
+      result.results.push_back(entry);
+      result.results.sort();
+      result.results.unique();
+    }
+  }
+
+  static void AddPOIResult(const SearchParameter& parameter,
+                           LocationSearchResult::MatchQuality regionMatchQuality,
+                           const POISearchVisitor::Result& poiMatch,
+                           LocationSearchResult::MatchQuality poiMatchQuality,
+                           LocationSearchResult& result)
+  {
+    if (result.results.size()>parameter.limit) {
+      result.limitReached=true;
+    }
+    else {
+      LocationSearchResult::Entry entry;
+
+      entry.adminRegion=poiMatch.adminRegion;
+      entry.adminRegionMatchQuality=regionMatchQuality;
+      entry.poi=poiMatch.poi;
+      entry.poiMatchQuality=poiMatchQuality;
+      entry.postalAreaMatchQuality=LocationSearchResult::none;
+      entry.locationMatchQuality=LocationSearchResult::none;
+      entry.addressMatchQuality=LocationSearchResult::none;
+
+      result.results.push_back(entry);
+      result.results.sort();
+      result.results.unique();
+    }
+  }
+
+  static void AddPostalAreaResult(const SearchParameter& parameter,
+                                  LocationSearchResult::MatchQuality regionMatchQuality,
+                                  const PostalAreaSearchVisitor::Result& postalAreaMatch,
+                                  LocationSearchResult::MatchQuality postalAreaMatchQuality,
+                                  LocationSearchResult& result)
+  {
+    if (result.results.size()>parameter.limit) {
+      result.limitReached=true;
+    }
+    else {
+      LocationSearchResult::Entry entry;
+
+      //std::cout << "Add location: " << locationMatch.location->name << " " << locationMatch.postalArea->name << " " << locationMatch.adminRegion->name << std::endl;
+
+      entry.adminRegion=postalAreaMatch.adminRegion;
+      entry.adminRegionMatchQuality=regionMatchQuality;
+      entry.poiMatchQuality=LocationSearchResult::none;
+      entry.postalArea=postalAreaMatch.postalArea;
+      entry.postalAreaMatchQuality=postalAreaMatchQuality;
+      entry.locationMatchQuality=LocationSearchResult::none;
+      entry.addressMatchQuality=LocationSearchResult::none;
+
+      result.results.push_back(entry);
+      result.results.sort();
+      result.results.unique();
+    }
+  }
+
+  static void AddLocationResult(const SearchParameter& parameter,
+                                LocationSearchResult::MatchQuality regionMatchQuality,
+                                LocationSearchResult::MatchQuality postalAreaMatchQuality,
+                                const LocationSearchVisitor::Result& locationMatch,
+                                LocationSearchResult::MatchQuality locationMatchQuality,
+                                LocationSearchResult& result)
+  {
+    if (result.results.size()>parameter.limit) {
+      result.limitReached=true;
+    }
+    else {
+      LocationSearchResult::Entry entry;
+
+      //std::cout << "Add location: " << locationMatch.location->name << " " << locationMatch.postalArea->name << " " << locationMatch.adminRegion->name << std::endl;
+
+      entry.adminRegion=locationMatch.adminRegion;
+      entry.adminRegionMatchQuality=regionMatchQuality;
+      entry.poiMatchQuality=LocationSearchResult::none;
+      entry.postalArea=locationMatch.postalArea;
+      entry.postalAreaMatchQuality=postalAreaMatchQuality;
+      entry.location=locationMatch.location;
+      entry.locationMatchQuality=locationMatchQuality;
+      entry.addressMatchQuality=LocationSearchResult::none;
+
+      result.results.push_back(entry);
+      result.results.sort();
+      result.results.unique();
+    }
+  }
+
+  static void AddAddressResult(const SearchParameter& parameter,
+                               LocationSearchResult::MatchQuality regionMatchQuality,
+                               LocationSearchResult::MatchQuality postalAreaMatchQuality,
+                               LocationSearchResult::MatchQuality locationMatchQuality,
+                               const AddressSearchVisitor::Result& addressMatch,
+                               LocationSearchResult::MatchQuality addressMatchQuality,
+                               LocationSearchResult& result)
+  {
+    if (result.results.size()>parameter.limit) {
+      result.limitReached=true;
+    }
+    else {
+      LocationSearchResult::Entry entry;
+
+      entry.adminRegion=addressMatch.adminRegion;
+      entry.adminRegionMatchQuality=regionMatchQuality;
+      entry.poiMatchQuality=LocationSearchResult::none;
+      entry.postalArea=addressMatch.postalArea;
+      entry.postalAreaMatchQuality=postalAreaMatchQuality;
+      entry.location=addressMatch.location;
+      entry.locationMatchQuality=locationMatchQuality;
+      entry.address=addressMatch.address;
+      entry.addressMatchQuality=addressMatchQuality;
+
+      result.results.push_back(entry);
+      result.results.sort();
+      result.results.unique();
+    }
+  }
+
+  static bool SearchForAddressForLocation(LocationIndexRef& locationIndex,
+                                          const SearchParameter& parameter,
+                                          const std::list<std::string>& addressTokens,
+                                          const LocationSearchVisitor::Result& locationMatch,
+                                          LocationSearchResult::MatchQuality regionMatchQuality,
+                                          LocationSearchResult::MatchQuality postalAreaMatchQuality,
+                                          LocationSearchResult::MatchQuality locationMatchQuality,
+                                          LocationSearchResult& result)
+  {
+    // Build address search patterns
+
+    std::unordered_set<std::string> addressPatternExclusions; // Currently none
+
+    std::list<TokenStringRef> addressSearchPatterns=GenerateSearchPatterns(addressTokens,
+                                                                           addressPatternExclusions,
+                                                                           locationIndex->GetAddressMaxWords());
+
+    CleanupSearchPatterns(addressSearchPatterns);
+
+    AddressSearchVisitor addressVisitor(parameter.stringMatcherFactory,
+                                        addressSearchPatterns);
+
+    StopClock addressVisitTime;
+
+    if (!locationIndex->VisitAddresses(*locationMatch.adminRegion,
+                                       *locationMatch.postalArea,
+                                       *locationMatch.location,
+                                       addressVisitor)) {
+      return false;
+    }
+
+    addressVisitTime.Stop();
+
+    //std::cout << "Address visit time: " << addressVisitTime.ResultString() << std::endl;
+
+    for (const auto& addressMatch : addressVisitor.matches) {
+      //std::cout << "Found address match '" << addressMatch.address->name << "' for pattern '" << addressMatch.tokenString->text << "'" << std::endl;
+      std::list<std::string> restTokens=BuildStringListFromSubToken(addressMatch.tokenString,
+                                                                    addressTokens);
+
+      if (restTokens.empty()) {
+        AddAddressResult(parameter,
+                         regionMatchQuality,
+                         postalAreaMatchQuality,
+                         locationMatchQuality,
+                         addressMatch,
+                         LocationSearchResult::match,
+                         result);
+      }
+    }
+
+    if (!parameter.addressOnlyMatch) {
+      for (const auto& addressMatch : addressVisitor.partialMatches) {
+        //std::cout << "Found address candidate '" << addressMatch.address->name << "' for pattern '" << addressMatch.tokenString->text << "'" << std::endl;
+        std::list<std::string> restTokens=BuildStringListFromSubToken(addressMatch.tokenString,
+                                                                      addressTokens);
+
+        if (restTokens.empty()) {
+          AddAddressResult(parameter,
+                           regionMatchQuality,
+                           postalAreaMatchQuality,
+                           locationMatchQuality,
+                           addressMatch,
+                           LocationSearchResult::candidate,
+                           result);
+        }
+      }
+    }
+
+    return true;
+  }
+
+  static bool SearchForLocationForRegion(LocationIndexRef& locationIndex,
+                                         const SearchParameter& parameter,
+                                         const std::list<std::string>& locationTokens,
+                                         const AdminRegionSearchVisitor::Result& regionMatch,
+                                         LocationSearchResult::MatchQuality regionMatchQuality,
+                                         LocationSearchResult& result,
+                                         BreakerRef &breaker)
+  {
+    std::unordered_set<std::string> locationIgnoreTokenSet;
+
+    for (const auto& token : locationIndex->GetLocationIgnoreTokens()) {
+      locationIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    // Build Location search patterns
+
+    std::list<TokenStringRef> locationSearchPatterns=GenerateSearchPatterns(locationTokens,
+                                                                            locationIgnoreTokenSet,
+                                                                            locationIndex->GetLocationMaxWords());
+
+    CleanupSearchPatterns(locationSearchPatterns);
+
+    // Search for locations
+
+    LocationSearchVisitor locationVisitor(parameter.stringMatcherFactory,
+                                          locationSearchPatterns,
+                                          breaker);
+
+    StopClock locationVisitTime;
+
+    if (!locationIndex->VisitLocations(*regionMatch.adminRegion,
+                                       locationVisitor)) {
+      return false;
+    }
+
+    locationVisitTime.Stop();
+
+    //std::cout << "Location (" << regionMatch.adminRegion->name << ") visit time: " << locationVisitTime.ResultString() << std::endl;
+
+    for (const auto& locationMatch : locationVisitor.matches) {
+      if (breaker && breaker->IsAborted()){
+        return true;
+      }
+      //std::cout << "Found location match '" << locationMatch.location->name << "' for pattern '" << locationMatch.tokenString->text << "'" << std::endl;
+      std::list<std::string> addressTokens=BuildStringListFromSubToken(locationMatch.tokenString,
+                                                                       locationTokens);
+
+      if (addressTokens.empty()) {
+        AddLocationResult(parameter,
+                          regionMatchQuality,
+                          LocationSearchResult::candidate,
+                          locationMatch,
+                          LocationSearchResult::match,
+                          result);
+      }
+      else {
+        size_t currentResultSize=result.results.size();
+
+        SearchForAddressForLocation(locationIndex,
+                                    parameter,
+                                    addressTokens,
+                                    locationMatch,
+                                    regionMatchQuality,
+                                    LocationSearchResult::none,
+                                    LocationSearchResult::match,
+                                    result);
+
+        if (result.results.size()==currentResultSize && parameter.partialMatch) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddLocationResult(parameter,
+                            regionMatchQuality,
+                            LocationSearchResult::candidate,
+                            locationMatch,
+                            LocationSearchResult::match,
+                            result);
+        }
+      }
+    }
+
+    if (!parameter.locationOnlyMatch) {
+      for (const auto& locationMatch : locationVisitor.partialMatches) {
+        //std::cout << "Found location candidate '" << locationMatch.location->name << "' for pattern '" << locationMatch.tokenString->text << "'" << std::endl;
+        std::list<std::string> addressTokens=BuildStringListFromSubToken(locationMatch.tokenString,
+                                                                         locationTokens);
+
+        if (addressTokens.empty()) {
+          AddLocationResult(parameter,
+                            regionMatchQuality,
+                            LocationSearchResult::candidate,
+                            locationMatch,
+                            LocationSearchResult::candidate,
+                            result);
+        }
+        else {
+          size_t currentResultSize=result.results.size();
+
+          SearchForAddressForLocation(locationIndex,
+                                      parameter,
+                                      addressTokens,
+                                      locationMatch,
+                                      regionMatchQuality,
+                                      LocationSearchResult::none,
+                                      LocationSearchResult::candidate,
+                                      result);
+
+          if (result.results.size()==currentResultSize && parameter.partialMatch) {
+            // If we have not found any result for the given search entry, we create one for the "upper" object
+            // so that partial results are not lost
+            AddLocationResult(parameter,
+                              regionMatchQuality,
+                              LocationSearchResult::candidate,
+                              locationMatch,
+                              LocationSearchResult::candidate,
+                              result);
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  static bool SearchForLocationForPostalArea(LocationIndexRef& locationIndex,
+                                             const SearchParameter& parameter,
+                                             const std::string& locationPattern,
+                                             const std::string& addressPattern,
+                                             const PostalAreaSearchVisitor::Result& postalAreaMatch,
+                                             LocationSearchResult::MatchQuality regionMatchQuality,
+                                             LocationSearchResult::MatchQuality postalAreaMatchQuality,
+                                             LocationSearchResult& result,
+                                             BreakerRef &breaker)
+  {
+    std::unordered_set<std::string> locationIgnoreTokenSet;
+
+    for (const auto& token : locationIndex->GetLocationIgnoreTokens()) {
+      locationIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    // Build Location search patterns
+
+    std::list<TokenStringRef> locationSearchPatterns;
+
+    locationSearchPatterns.push_back(std::make_shared<TokenString>(locationPattern));
+
+    // Search for locations
+
+    LocationSearchVisitor locationVisitor(parameter.stringMatcherFactory,
+                                          locationSearchPatterns,
+                                          breaker);
+
+    //std::cout << "Search for location for " << postalAreaMatch.adminRegion->name << " " << postalAreaMatch.postalArea->name << "..." << std::endl;
+
+    if (!locationIndex->VisitLocations(*postalAreaMatch.adminRegion,
+                                       *postalAreaMatch.postalArea,
+                                       locationVisitor,
+                                       false)) {
+      return false;
+    }
+
+    for (const auto& locationMatch : locationVisitor.matches) {
+      //std::cout << "Found location match '" << locationMatch.location->name << "' for pattern '" << locationMatch.tokenString->text << "'" << std::endl;
+      if (addressPattern.empty()) {
+        AddLocationResult(parameter,
+                          regionMatchQuality,
+                          postalAreaMatchQuality,
+                          locationMatch,
+                          LocationSearchResult::match,
+                          result);
+      }
+      else {
+        std::list<std::string> addressTokens;
+        size_t                 currentResultSize=result.results.size();
+
+        addressTokens.push_back(addressPattern);
+
+        SearchForAddressForLocation(locationIndex,
+                                    parameter,
+                                    addressTokens,
+                                    locationMatch,
+                                    regionMatchQuality,
+                                    postalAreaMatchQuality,
+                                    LocationSearchResult::match,
+                                    result);
+
+        if (result.results.size()==currentResultSize &&
+            parameter.partialMatch) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddLocationResult(parameter,
+                            regionMatchQuality,
+                            postalAreaMatchQuality,
+                            locationMatch,
+                            LocationSearchResult::match,
+                            result);
+        }
+      }
+    }
+
+    if (!parameter.locationOnlyMatch) {
+      for (const auto& locationMatch : locationVisitor.partialMatches) {
+        //std::cout << "Found location candidate '" << locationMatch.location->name << "' for pattern '" << locationMatch.tokenString->text << "'" << std::endl;
+        if (addressPattern.empty()) {
+          AddLocationResult(parameter,
+                            regionMatchQuality,
+                            postalAreaMatchQuality,
+                            locationMatch,
+                            LocationSearchResult::candidate,
+                            result);
+        }
+        else {
+          std::list<std::string> addressTokens;
+          size_t                 currentResultSize=result.results.size();
+
+          addressTokens.push_back(addressPattern);
+
+          SearchForAddressForLocation(locationIndex,
+                                      parameter,
+                                      addressTokens,
+                                      locationMatch,
+                                      regionMatchQuality,
+                                      postalAreaMatchQuality,
+                                      LocationSearchResult::candidate,
+                                      result);
+
+          if (result.results.size()==currentResultSize &&
+              parameter.partialMatch) {
+            // If we have not found any result for the given search entry, we create one for the "upper" object
+            // so that partial results are not lost
+            AddLocationResult(parameter,
+                              regionMatchQuality,
+                              postalAreaMatchQuality,
+                              locationMatch,
+                              LocationSearchResult::candidate,
+                              result);
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  static bool SearchForPostalAreaForRegion(LocationIndexRef& locationIndex,
+                                           const SearchParameter& parameter,
+                                           const std::string& postalAreaPattern,
+                                           const std::string& locationPattern,
+                                           const std::string& addressPattern,
+                                           const AdminRegionSearchVisitor::Result& regionMatch,
+                                           LocationSearchResult::MatchQuality regionMatchQuality,
+                                           LocationSearchResult& result,
+                                           BreakerRef &breaker)
+  {
+    /*
+    std::unordered_set<std::string> postalAreaIgnoreTokenSet;
+
+    for (const auto& token : locationIndex->GetLocationIgnoreTokens()) {
+      locationIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }*/
+
+    // Build Location search patterns
+
+    //std::cout << "Search for postal area '" << postalAreaPattern << "'" << std::endl;
+
+    std::list<TokenStringRef> postalAreaSearchPatterns;
+
+    if (!postalAreaPattern.empty()) {
+      postalAreaSearchPatterns.push_back(std::make_shared<TokenString>(postalAreaPattern));
+    }
+
+    // Search for locations
+
+    PostalAreaSearchVisitor postalAreaVisitor(parameter.stringMatcherFactory,
+                                              postalAreaSearchPatterns,
+                                              breaker);
+
+    if (!locationIndex->VisitAdminRegions(*regionMatch.adminRegion,
+                                          postalAreaVisitor)) {
+      return false;
+    }
+
+    for (const auto& postalAreaMatch : postalAreaVisitor.matches) {
+      //std::cout << "Found postal area match '" << postalAreaMatch.adminRegion->name << " " << postalAreaMatch.postalArea->name << "' for pattern '" << postalAreaMatch.tokenString->text << "'" << std::endl;
+
+      if (locationPattern.empty() &&
+          addressPattern.empty()) {
+        AddPostalAreaResult(parameter,
+                            regionMatchQuality,
+                            postalAreaMatch,
+                            LocationSearchResult::match,
+                            result);
+      }
+      else {
+        std::list<std::string> locationTokens;
+        size_t                 currentResultSize=result.results.size();
+
+        locationTokens.push_back(locationPattern);
+
+        SearchForLocationForPostalArea(locationIndex,
+                                       parameter,
+                                       locationPattern,
+                                       addressPattern,
+                                       postalAreaMatch,
+                                       regionMatchQuality,
+                                       LocationSearchResult::match,
+                                       result,
+                                       breaker);
+
+        if (result.results.size()==currentResultSize &&
+            parameter.partialMatch) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddPostalAreaResult(parameter,
+                              regionMatchQuality,
+                              postalAreaMatch,
+                              LocationSearchResult::match,
+                              result);
+        }
+      }
+    }
+
+    if (!parameter.postalAreaOnlyMatch) {
+      for (const auto& postalAreaMatch : postalAreaVisitor.partialMatches) {
+        //std::cout << "Found postal area candidate '" << postalAreaMatch.adminRegion->name << " " << postalAreaMatch.postalArea->name << "' for pattern '" << postalAreaMatch.tokenString->text << "'" << std::endl;
+        if (locationPattern.empty() &&
+            addressPattern.empty()) {
+          AddPostalAreaResult(parameter,
+                              regionMatchQuality,
+                              postalAreaMatch,
+                              LocationSearchResult::candidate,
+                              result);
+        }
+        else {
+          std::list<std::string> locationTokens;
+          size_t                 currentResultSize=result.results.size();
+
+          locationTokens.push_back(locationPattern);
+
+          SearchForLocationForPostalArea(locationIndex,
+                                         parameter,
+                                         locationPattern,
+                                         addressPattern,
+                                         postalAreaMatch,
+                                         regionMatchQuality,
+                                         LocationSearchResult::candidate,
+                                         result,
+                                         breaker);
+
+          if (result.results.size()==currentResultSize &&
+              parameter.partialMatch) {
+            // If we have not found any result for the given search entry, we create one for the "upper" object
+            // so that partial results are not lost
+            AddPostalAreaResult(parameter,
+                                regionMatchQuality,
+                                postalAreaMatch,
+                                LocationSearchResult::candidate,
+                                result);
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  static bool SearchForPOIForRegion(LocationIndexRef& locationIndex,
+                                    const SearchParameter& parameter,
+                                    const std::list<std::string>& poiTokens,
+                                    const AdminRegionSearchVisitor::Result& regionMatch,
+                                    LocationSearchResult::MatchQuality regionMatchQuality,
+                                    LocationSearchResult& result,
+                                    BreakerRef &breaker)
+  {
+    std::unordered_set<std::string> poiIgnoreTokenSet;
+
+    for (const auto& token : locationIndex->GetPOIIgnoreTokens()) {
+      poiIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    // Build Location search patterns
+
+    std::list<TokenStringRef> poiSearchPatterns=GenerateSearchPatterns(poiTokens,
+                                                                       poiIgnoreTokenSet,
+                                                                       locationIndex->GetPOIMaxWords());
+
+    CleanupSearchPatterns(poiSearchPatterns);
+
+    // Search for locations
+
+    POISearchVisitor poiVisitor(parameter.stringMatcherFactory,
+                                poiSearchPatterns,
+                                breaker);
+
+    if (!locationIndex->VisitPOIs(*regionMatch.adminRegion,
+                                  poiVisitor)) {
+      return false;
+    }
+
+    for (const auto& poiMatch : poiVisitor.matches) {
+      //std::cout << "Found poi match '" << poiMatch.poi->name << "' for pattern '" << poiMatch.tokenString->text << "'" << std::endl;
+      std::list<std::string> restTokens=BuildStringListFromSubToken(poiMatch.tokenString,
+                                                                    poiTokens);
+
+      if (restTokens.empty()) {
+        AddPOIResult(parameter,
+                     regionMatchQuality,
+                     poiMatch,
+                     LocationSearchResult::match,
+                     result);
+      }
+    }
+
+    if (!parameter.locationOnlyMatch) {
+      for (const auto& poiMatch : poiVisitor.partialMatches) {
+        //std::cout << "Found poi candidate '" << poiMatch.poi->name << "' for pattern '" << poiMatch.tokenString->text << "'" << std::endl;
+        std::list<std::string> restTokens=BuildStringListFromSubToken(poiMatch.tokenString,
+                                                                      poiTokens);
+
+        if (restTokens.empty()) {
+          AddPOIResult(parameter,
+                       regionMatchQuality,
+                       poiMatch,
+                       LocationSearchResult::candidate,
+                       result);
+        }
+      }
+    }
+
+    return true;
+  }
+
+  static bool SearchForPOIForRegion(LocationIndexRef& locationIndex,
+                                    const SearchParameter& parameter,
+                                    const std::string& poiPattern,
+                                    const AdminRegionSearchVisitor::Result& regionMatch,
+                                    LocationSearchResult::MatchQuality regionMatchQuality,
+                                    LocationSearchResult& result,
+                                    BreakerRef &breaker)
+  {
+    std::unordered_set<std::string> poiIgnoreTokenSet;
+
+    for (const auto& token : locationIndex->GetPOIIgnoreTokens()) {
+      poiIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    // Build Location search patterns
+
+
+    std::list<TokenStringRef> poiSearchPatterns;
+
+    poiSearchPatterns.push_back(std::make_shared<TokenString>(poiPattern));
+
+    CleanupSearchPatterns(poiSearchPatterns);
+
+    // Search for locations
+
+    POISearchVisitor poiVisitor(parameter.stringMatcherFactory,
+                                poiSearchPatterns,
+                                breaker);
+
+    if (!locationIndex->VisitPOIs(*regionMatch.adminRegion,
+                                  poiVisitor)) {
+      return false;
+    }
+
+    for (const auto& poiMatch : poiVisitor.matches) {
+      AddPOIResult(parameter,
+                   regionMatchQuality,
+                   poiMatch,
+                   LocationSearchResult::match,
+                   result);
+    }
+
+    if (!parameter.poiOnlyMatch) {
+      for (const auto& poiMatch : poiVisitor.partialMatches) {
+        AddPOIResult(parameter,
+                     regionMatchQuality,
+                     poiMatch,
+                     LocationSearchResult::candidate,
+                     result);
+      }
+    }
+
+    return true;
+  }
+
+  bool LocationService::SearchForLocationByString(const LocationStringSearchParameter& searchParameter,
+                                                  LocationSearchResult& result) const
+  {
+    LocationIndexRef                locationIndex=database->GetLocationIndex();
+    std::unordered_set<std::string> regionIgnoreTokenSet;
+    AdminRegionRef                  defaultAdminRegion=searchParameter.GetDefaultAdminRegion();
+    std::string                     searchPattern=searchParameter.GetSearchString();
+    SearchParameter                 parameter;
+
+    BreakerRef breaker=searchParameter.GetBreaker();
+
+    parameter.searchForLocation=searchParameter.GetSearchForLocation();
+    parameter.searchForPOI=searchParameter.GetSearchForPOI();
+    parameter.adminRegionOnlyMatch=searchParameter.GetAdminRegionOnlyMatch();
+    parameter.poiOnlyMatch=searchParameter.GetPOIOnlyMatch();
+    parameter.postalAreaOnlyMatch=false;
+    parameter.locationOnlyMatch=searchParameter.GetLocationOnlyMatch();
+    parameter.addressOnlyMatch=searchParameter.GetAddressOnlyMatch();
+    parameter.partialMatch=searchParameter.GetPartialMatch();
+    parameter.stringMatcherFactory=searchParameter.GetStringMatcherFactory();
+    parameter.limit=searchParameter.GetLimit();
+
+    result.limitReached=false;
+    result.results.clear();
+
+    if (!locationIndex) {
+      return false;
+    }
+
+    for (const auto& token : locationIndex->GetRegionIgnoreTokens()) {
+      regionIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    std::list<std::string> tokens;
 
     if (searchPattern.empty()) {
       return true;
@@ -863,108 +1892,181 @@ namespace osmscout {
       return true;
     }
 
-    SimplifyTokenList(tokens);
+    if (defaultAdminRegion) {
+      const std::list<std::string>& locationTokens=tokens;
+      TokenStringRef                tokenString=std::make_shared<TokenString>(0,defaultAdminRegion->name.length(),defaultAdminRegion->name);
 
-    if (tokens.size()>=3) {
-      std::list<std::list<std::string> > slices;
+      AdminRegionSearchVisitor::Result regionMatch(tokenString,
+                                                   defaultAdminRegion,
+                                                   defaultAdminRegion->name);
 
-      GroupStringListToStrings(tokens.begin(),
-                               tokens.size(),
-                               3,
-                               slices);
 
-      for (std::list< std::list<std::string> >::const_iterator slice=slices.begin();
-          slice!=slices.end();
-          ++slice) {
-        std::list<std::string>::const_iterator text1;
-        std::list<std::string>::const_iterator text2;
-        std::list<std::string>::const_iterator text3;
-
-        text1=slice->begin();
-        text2=text1;
-        text2++;
-        text3=text2;
-        text3++;
-
-        osmscout::LocationSearch::Entry search;
-
-        search.locationPattern=*text1;
-        search.addressPattern=*text2;
-        search.adminRegionPattern=*text3;
-
-        if (!locationIndex->IsLocationIgnoreToken(search.locationPattern) &&
-            !locationIndex->IsRegionIgnoreToken(search.adminRegionPattern)) {
-          locationSearch.searches.push_back(search);
+      if (locationTokens.empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::match,
+                        regionMatch,
+                        result);
+      }
+      else {
+        if (parameter.searchForLocation) {
+          SearchForLocationForRegion(locationIndex,
+                                     parameter,
+                                     locationTokens,
+                                     regionMatch,
+                                     LocationSearchResult::match,
+                                     result,
+                                     breaker);
+          if (searchParameter.IsAborted()){
+            osmscout::log.Debug() << "Search aborted";
+            return true;
+          }
         }
 
-        search.locationPattern=*text2;
-        search.addressPattern=*text3;
-        search.adminRegionPattern=*text1;
-
-        if (!locationIndex->IsLocationIgnoreToken(search.locationPattern) &&
-            !locationIndex->IsRegionIgnoreToken(search.adminRegionPattern)) {
-          locationSearch.searches.push_back(search);
+        if (parameter.searchForPOI) {
+          SearchForPOIForRegion(locationIndex,
+                                parameter,
+                                locationTokens,
+                                regionMatch,
+                                LocationSearchResult::match,
+                                result,
+                                breaker);
+          if (searchParameter.IsAborted()){
+            osmscout::log.Debug() << "Search aborted";
+            return true;
+          }
         }
       }
     }
 
-    if (tokens.size()>=2) {
-      std::list<std::list<std::string> > slices;
+    // Build Region search patterns
 
-      GroupStringListToStrings(tokens.begin(),
-                               tokens.size(),
-                               2,
-                               slices);
+    std::list<TokenStringRef> regionSearchPatterns=GenerateSearchPatterns(tokens,
+                                                                          regionIgnoreTokenSet,
+                                                                          locationIndex->GetRegionMaxWords());
 
-      for (std::list< std::list<std::string> >::const_iterator slice=slices.begin();
-          slice!=slices.end();
-          ++slice) {
-        std::list<std::string>::const_iterator text1;
-        std::list<std::string>::const_iterator text2;
+    CleanupSearchPatterns(regionSearchPatterns);
 
-        text1=slice->begin();
-        text2=text1;
-        text2++;
+    // Search for region name
 
-        osmscout::LocationSearch::Entry search;
+    AdminRegionSearchVisitor adminRegionVisitor(parameter.stringMatcherFactory,
+                                                regionSearchPatterns);
 
-        search.locationPattern=*text1;
-        search.adminRegionPattern=*text2;
+    StopClock adminRegionVisitTime;
 
-        if (!locationIndex->IsLocationIgnoreToken(search.locationPattern) &&
-            !locationIndex->IsRegionIgnoreToken(search.adminRegionPattern)) {
-          locationSearch.searches.push_back(search);
+    locationIndex->VisitAdminRegions(adminRegionVisitor);
+
+    adminRegionVisitTime.Stop();
+
+    //std::cout << "Admin Region visit: " << adminRegionVisitTime.ResultString() << std::endl;
+    if (searchParameter.IsAborted()){
+      osmscout::log.Debug() << "Search aborted";
+      return true;
+    }
+
+    for (const auto& regionMatch : adminRegionVisitor.matches) {
+      //std::cout << "Found region match '" << regionMatch.adminRegion->name << "' (" << regionMatch.adminRegion->object.GetName() << ") for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
+      std::list<std::string> locationTokens=BuildStringListFromSubToken(regionMatch.tokenString,
+                                                                        tokens);
+
+      if (locationTokens.empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::match,
+                        regionMatch,
+                        result);
+      }
+      else {
+        size_t currentResultSize=result.results.size();
+
+        if (parameter.searchForLocation) {
+          SearchForLocationForRegion(locationIndex,
+                                     parameter,
+                                     locationTokens,
+                                     regionMatch,
+                                     LocationSearchResult::match,
+                                     result,
+                                     breaker);
+          if (searchParameter.IsAborted()){
+            osmscout::log.Debug() << "Search aborted";
+            return true;
+          }
         }
 
-        search.locationPattern=*text2;
-        search.adminRegionPattern=*text1;
+        if (parameter.searchForPOI) {
+          SearchForPOIForRegion(locationIndex,
+                                parameter,
+                                locationTokens,
+                                regionMatch,
+                                LocationSearchResult::match,
+                                result,
+                                breaker);
+          if (searchParameter.IsAborted()){
+            osmscout::log.Debug() << "Search aborted";
+            return true;
+          }
+        }
 
-        if (!locationIndex->IsLocationIgnoreToken(search.locationPattern) &&
-            !locationIndex->IsRegionIgnoreToken(search.adminRegionPattern)) {
-          locationSearch.searches.push_back(search);
+        if (result.results.size()==currentResultSize && parameter.partialMatch) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddRegionResult(parameter,
+                          LocationSearchResult::match,
+                          regionMatch,
+                          result);
         }
       }
     }
 
-    if (tokens.size()>=1) {
-      std::list<std::list<std::string> > slices;
+    if (!parameter.adminRegionOnlyMatch) {
+      for (const auto& regionMatch : adminRegionVisitor.partialMatches) {
+        //std::cout << "Found region candidate '" << regionMatch.adminRegion->name << "' (" << regionMatch.adminRegion->object.GetName() << ") for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
+        std::list<std::string> locationTokens=BuildStringListFromSubToken(regionMatch.tokenString,
+                                                                          tokens);
 
-      GroupStringListToStrings(tokens.begin(),
-                               tokens.size(),
-                               1,
-                               slices);
+        if (locationTokens.empty()) {
+          AddRegionResult(parameter,
+                          LocationSearchResult::candidate,
+                          regionMatch,
+                          result);
+        }
+        else {
+          size_t currentResultSize=result.results.size();
 
-      for (std::list< std::list<std::string> >::const_iterator slice=slices.begin();
-          slice!=slices.end();
-          ++slice) {
-        std::list<std::string>::const_iterator text1=slice->begin();
+          if (parameter.searchForLocation) {
+            SearchForLocationForRegion(locationIndex,
+                                       parameter,
+                                       locationTokens,
+                                       regionMatch,
+                                       LocationSearchResult::candidate,
+                                       result,
+                                       breaker);
+            if (searchParameter.IsAborted()){
+              osmscout::log.Debug() << "Search aborted";
+              return true;
+            }
+          }
 
-        osmscout::LocationSearch::Entry search;
+          if (parameter.searchForPOI) {
+            SearchForPOIForRegion(locationIndex,
+                                  parameter,
+                                  locationTokens,
+                                  regionMatch,
+                                  LocationSearchResult::candidate,
+                                  result,
+                                  breaker);
+            if (searchParameter.IsAborted()){
+              osmscout::log.Debug() << "Search aborted";
+              return true;
+            }
+          }
 
-        search.adminRegionPattern=*text1;
-
-        if (!locationIndex->IsRegionIgnoreToken(search.adminRegionPattern)) {
-          locationSearch.searches.push_back(search);
+          if (result.results.size()==currentResultSize && parameter.partialMatch) {
+            // If we have not found any result for the given search entry, we create one for the "upper" object
+            // so that partial results are not lost
+            AddRegionResult(parameter,
+                            LocationSearchResult::candidate,
+                            regionMatch,
+                            result);
+          }
         }
       }
     }
@@ -972,77 +2074,126 @@ namespace osmscout {
     return true;
   }
 
-  /**
-   * Search for the given location patterns
-   * @param search
-   *    Data structure holding the search requests
-   * @param result
-   *    Data structure holding the search result
-   * @return
-   *    True, if there was no error
-   */
-  bool LocationService::SearchForLocations(const LocationSearch& search,
-                                           LocationSearchResult& result) const
+  bool LocationService::SearchForLocationByForm(const LocationFormSearchParameter& searchParameter,
+                                                LocationSearchResult& result) const
   {
+    LocationIndexRef                locationIndex=database->GetLocationIndex();
+    std::unordered_set<std::string> regionIgnoreTokenSet;
+    SearchParameter                 parameter;
+
+    BreakerRef breaker=searchParameter.GetBreaker();
+
+    parameter.searchForLocation=true;
+    parameter.searchForPOI=false;
+    parameter.adminRegionOnlyMatch=searchParameter.GetAdminRegionOnlyMatch();
+    parameter.poiOnlyMatch=false;
+    parameter.postalAreaOnlyMatch=searchParameter.GetPostalAreaOnlyMatch();
+    parameter.locationOnlyMatch=searchParameter.GetLocationOnlyMatch();
+    parameter.addressOnlyMatch=searchParameter.GetAddressOnlyMatch();
+    parameter.partialMatch=searchParameter.GetPartialMatch();
+    parameter.stringMatcherFactory=searchParameter.GetStringMatcherFactory();
+    parameter.limit=searchParameter.GetLimit();
+
     result.limitReached=false;
     result.results.clear();
 
-    for (const auto& searchEntry : search.searches) {
-      if (searchEntry.adminRegionPattern.empty()) {
-        continue;
+    if (!locationIndex) {
+      return false;
+    }
+
+    for (const auto& token : locationIndex->GetRegionIgnoreTokens()) {
+      regionIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
+
+    if (searchParameter.GetAdminRegionSearchString().empty()) {
+      return true;
+    }
+
+    // Build Region search patterns
+
+    std::list<TokenStringRef> regionSearchPatterns;
+
+    regionSearchPatterns.push_back(std::make_shared<TokenString>(searchParameter.GetAdminRegionSearchString()));
+
+    // Search for region name
+
+    AdminRegionSearchVisitor adminRegionVisitor(searchParameter.GetStringMatcherFactory(),
+                                                regionSearchPatterns);
+
+    locationIndex->VisitAdminRegions(adminRegionVisitor);
+    if (searchParameter.IsAborted()){
+      osmscout::log.Debug() << "Search aborted";
+      return true;
+    }
+
+    for (const auto& regionMatch : adminRegionVisitor.matches) {
+      //std::cout << "Found region match '" << regionMatch.adminRegion->name << "' for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
+
+      if (searchParameter.GetPostalAreaSearchString().empty() &&
+          searchParameter.GetLocationSearchString().empty() &&
+          searchParameter.GetAddressSearchString().empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::match,
+                        regionMatch,
+                        result);
       }
+      else {
+        size_t currentResultSize=result.results.size();
 
-      //std::cout << "Search for region '" << searchEntry->adminRegionPattern << "'..." << std::endl;
+        SearchForPostalAreaForRegion(locationIndex,
+                                     parameter,
+                                     searchParameter.GetPostalAreaSearchString(),
+                                     searchParameter.GetLocationSearchString(),
+                                     searchParameter.GetAddressSearchString(),
+                                     regionMatch,
+                                     LocationSearchResult::match,
+                                     result,
+                                     breaker);
 
-      AdminRegionMatchVisitor adminRegionVisitor(searchEntry.adminRegionPattern,
-                                                 search.limit);
-
-      if (!VisitAdminRegions(adminRegionVisitor)) {
-        log.Error() << "Error during traversal of region tree";
-        return false;
+        if (result.results.size()==currentResultSize &&
+            searchParameter.GetPartialMatch()) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddRegionResult(parameter,
+                          LocationSearchResult::match,
+                          regionMatch,
+                          result);
+        }
       }
+    }
 
-      if (adminRegionVisitor.limitReached) {
-        result.limitReached=true;
+    for (const auto& regionMatch : adminRegionVisitor.partialMatches) {
+      //std::cout << "Found region candidate '" << regionMatch.adminRegion->name << "' for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
+
+      if (searchParameter.GetPostalAreaSearchString().empty() &&
+          searchParameter.GetLocationSearchString().empty() &&
+          searchParameter.GetAddressSearchString().empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::candidate,
+                        regionMatch,
+                        result);
       }
+      else {
+        size_t currentResultSize=result.results.size();
 
-      adminRegionVisitor.results.sort([](const AdminRegionMatchVisitor::AdminRegionResult& a,
-                                         const AdminRegionMatchVisitor::AdminRegionResult& b) {
-        return a.adminRegion->regionOffset<b.adminRegion->regionOffset;
-      });
+        SearchForPostalAreaForRegion(locationIndex,
+                                     parameter,
+                                     searchParameter.GetPostalAreaSearchString(),
+                                     searchParameter.GetLocationSearchString(),
+                                     searchParameter.GetAddressSearchString(),
+                                     regionMatch,
+                                     LocationSearchResult::candidate,
+                                     result,
+                                     breaker);
 
-      std::set<FileOffset> visitedAdminHierachie;
-
-      for (const auto& regionResult : adminRegionVisitor.results) {
-        // std::cout << "- '" << regionResult.adminRegion->name << "', '" << regionResult.adminRegion->aliasName << "'..." << std::endl;
-
-        std::map<FileOffset,AdminRegionRef> adminHierachie;
-        bool                                visited=false;
-
-        if (!ResolveAdminRegionHierachie(regionResult.adminRegion,
-                                         adminHierachie)) {
-          log.Error() << "Error during resolving admin region hierachie";
-          return false;
-        }
-
-        for (const auto& hierachieEntry : adminHierachie) {
-          if (visitedAdminHierachie.find(hierachieEntry.first)!=visitedAdminHierachie.end()) {
-            visited=true;
-            break;
-          }
-        }
-
-        visitedAdminHierachie.insert(regionResult.adminRegion->regionOffset);
-
-        if (visited) {
-          continue;
-        }
-
-        if (!HandleAdminRegion(search,
-                               searchEntry,
-                               regionResult,
-                               result)) {
-          return false;
+        if (result.results.size()==currentResultSize &&
+            searchParameter.GetPartialMatch()) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddRegionResult(parameter,
+                          LocationSearchResult::candidate,
+                          regionMatch,
+                          result);
         }
       }
     }
@@ -1053,867 +2204,124 @@ namespace osmscout {
     return true;
   }
 
-  class AdminRegionReverseLookupVisitor : public AdminRegionVisitor
+  bool LocationService::SearchForPOIByForm(const POIFormSearchParameter& searchParameter,
+                                           LocationSearchResult& result) const
   {
-  public:
-    struct SearchEntry
-    {
-      ObjectFileRef         object;
-      std::vector<GeoCoord> coords;
-      GeoBox                bbox;
-    };
+    LocationIndexRef                locationIndex=database->GetLocationIndex();
+    std::unordered_set<std::string> regionIgnoreTokenSet;
+    SearchParameter                 parameter;
 
-  private:
-    const Database&                                  database;
-    std::list<LocationService::ReverseLookupResult>& results;
+    BreakerRef breaker=searchParameter.GetBreaker();
 
-    std::list<SearchEntry>                           searchEntries;
+    parameter.searchForLocation=false;
+    parameter.searchForPOI=true;
+    parameter.adminRegionOnlyMatch=searchParameter.GetAdminRegionOnlyMatch();
+    parameter.poiOnlyMatch=searchParameter.GetPOIOnlyMatch();
+    parameter.locationOnlyMatch=true;
+    parameter.addressOnlyMatch=true;
+    parameter.partialMatch=true;
+    parameter.stringMatcherFactory=searchParameter.GetStringMatcherFactory();
+    parameter.limit=searchParameter.GetLimit();
 
-  public:
-    std::map<FileOffset,AdminRegionRef>              adminRegions;
-
-  public:
-    AdminRegionReverseLookupVisitor(const Database& database,
-                                    std::list<LocationService::ReverseLookupResult>& results);
-
-    void AddSearchEntry(const SearchEntry& searchEntry);
-
-    Action Visit(const AdminRegion& region);
-  };
-
-  AdminRegionReverseLookupVisitor::AdminRegionReverseLookupVisitor(const Database& database,
-                                                                   std::list<LocationService::ReverseLookupResult>& results)
-  : database(database),
-    results(results)
-  {
-    // no code
-  }
-
-  void AdminRegionReverseLookupVisitor::AddSearchEntry(const SearchEntry& searchEntry)
-  {
-    searchEntries.push_back(searchEntry);
-  }
-
-  AdminRegionVisitor::Action AdminRegionReverseLookupVisitor::Visit(const AdminRegion& region)
-  {
-    AreaRef area;
-    bool    atLeastOneCandidate=false;
-
-    if (!database.GetAreaByOffset(region.object.GetFileOffset(),
-                                  area)) {
-      return error;
-    }
-
-    for (std::list<SearchEntry>::const_iterator entry=searchEntries.begin();
-        entry!=searchEntries.end();
-        ++entry) {
-      if (region.Match(entry->object)) {
-        LocationService::ReverseLookupResult result;
-
-        result.object=entry->object;
-        result.adminRegion=std::make_shared<AdminRegion>(region);
-
-        results.push_back(result);
-      }
-
-      bool candidate=false;
-
-      for (size_t r=0; r<area->rings.size(); r++) {
-        if (!area->rings[r].IsOuterRing()) {
-          continue;
-        }
-
-        for (const auto& entry : searchEntries) {
-          if (entry.coords.size()==1) {
-            if (!IsCoordInArea(entry.coords.front(),
-                               area->rings[r].nodes)) {
-              continue;
-            }
-          }
-          else {
-            GeoBox ringBBox;
-            area->rings[r].GetBoundingBox(ringBBox);
-            if (!IsAreaAtLeastPartlyInArea(entry.coords,
-                                           area->rings[r].nodes,
-                                           entry.bbox,
-                                           ringBBox)) {
-              continue;
-            }
-          }
-
-          // candidate
-          candidate=true;
-          break;
-        }
-
-        if (candidate) {
-          break;
-        }
-      }
-
-      if (candidate) {
-        atLeastOneCandidate = true;
-        adminRegions.insert(std::make_pair(region.regionOffset,
-                                           std::make_shared<AdminRegion>(region)));
-      }
-    }
-
-    if (atLeastOneCandidate) {
-      return visitChildren;
-    }
-    else {
-      return skipChildren;
-    }
-  }
-
-  class LocationReverseLookupVisitor : public LocationVisitor
-  {
-  public:
-    struct Loc
-    {
-      AdminRegionRef adminRegion;
-      LocationRef    location;
-    };
-
-  private:
-    std::set<ObjectFileRef>                   objects;
-    std::list<LocationService::ReverseLookupResult>& results;
-
-  public:
-    std::list<Loc>                            locations;
-
-  public:
-    LocationReverseLookupVisitor(std::list<LocationService::ReverseLookupResult>& results);
-
-    void AddObject(const ObjectFileRef& object);
-
-    bool Visit(const AdminRegion& adminRegion,
-               const POI &poi);
-    bool Visit(const AdminRegion& adminRegion,
-               const Location &location);
-  };
-
-  LocationReverseLookupVisitor::LocationReverseLookupVisitor(std::list<LocationService::ReverseLookupResult>& results)
-  : results(results)
-  {
-    // no code
-  }
-
-  void LocationReverseLookupVisitor::AddObject(const ObjectFileRef& object)
-  {
-    objects.insert(object);
-  }
-
-  bool LocationReverseLookupVisitor::Visit(const AdminRegion& adminRegion,
-                                           const POI &poi)
-  {
-    if (objects.find(poi.object)!=objects.end()) {
-      LocationService::ReverseLookupResult result;
-
-      result.object=poi.object;
-      result.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-      result.poi=std::make_shared<POI>(poi);
-
-      results.push_back(result);
-    }
-
-    return true;
-  }
-
-  bool LocationReverseLookupVisitor::Visit(const AdminRegion& adminRegion,
-                                           const Location &location)
-  {
-    Loc l;
-
-    l.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-    l.location=std::make_shared<Location>(location);
-
-    locations.push_back(l);
-
-    for (const auto& object : location.objects) {
-      if (objects.find(object)!=objects.end()) {
-        LocationService::ReverseLookupResult result;
-
-        result.object=object;
-        result.adminRegion=l.adminRegion;
-        result.location=l.location;
-
-        results.push_back(result);
-      }
-    }
-
-    return true;
-  }
-
-  class AddressReverseLookupVisitor : public AddressVisitor
-  {
-  private:
-    std::list<LocationService::ReverseLookupResult>& results;
-
-    std::set<ObjectFileRef>                          objects;
-
-  public:
-    AddressReverseLookupVisitor(std::list<LocationService::ReverseLookupResult>& results);
-    void AddObject(const ObjectFileRef& object);
-
-    bool Visit(const AdminRegion& adminRegion,
-               const Location &location,
-               const Address& address);
-  };
-
-  AddressReverseLookupVisitor::AddressReverseLookupVisitor(std::list<LocationService::ReverseLookupResult>& results)
-  : results(results)
-  {
-    // no code
-  }
-
-  void AddressReverseLookupVisitor::AddObject(const ObjectFileRef& object)
-  {
-    objects.insert(object);
-  }
-
-  bool AddressReverseLookupVisitor::Visit(const AdminRegion& adminRegion,
-                                          const Location &location,
-                                          const Address& address)
-  {
-    if (objects.find(address.object)!=objects.end()) {
-      LocationService::ReverseLookupResult result;
-
-      result.object=address.object;
-      result.adminRegion=std::make_shared<AdminRegion>(adminRegion);
-      result.location=std::make_shared<Location>(location);
-      result.address=std::make_shared<Address>(address);
-
-      results.push_back(result);
-    }
-
-    return true;
-  }
-
-  /**
-   * Lookups location descriptions for the given objects.
-   * @param objects
-   *    List of objects
-   * @param result
-   *    List of results. The list may hold none, one or more entries for each
-   *    object.
-   * @return
-   *    True, if there was no error
-   */
-  bool LocationService::ReverseLookupObjects(const std::list<ObjectFileRef>& objects,
-                                             std::list<ReverseLookupResult>& result) const
-  {
-    result.clear();
-
-    LocationIndexRef locationIndex=database->GetLocationIndex();
+    result.limitReached=false;
+    result.results.clear();
 
     if (!locationIndex) {
       return false;
     }
 
-    AdminRegionReverseLookupVisitor adminRegionVisitor(*database,
-                                                       result);
+    for (const auto& token : locationIndex->GetRegionIgnoreTokens()) {
+      regionIgnoreTokenSet.insert(UTF8StringToUpper(token));
+    }
 
-    for (const auto& object : objects) {
-      if (object.GetType()==refNode) {
-        NodeRef node;
+    if (searchParameter.GetAdminRegionSearchString().empty()) {
+      return true;
+    }
 
-        if (!database->GetNodeByOffset(object.GetFileOffset(),
-                                       node)) {
-          return false;
-        }
+    // Build Region search patterns
 
-        AdminRegionReverseLookupVisitor::SearchEntry searchEntry;
+    std::list<TokenStringRef> regionSearchPatterns;
 
-        searchEntry.object=object;
-        searchEntry.coords.push_back(node->GetCoords());
+    regionSearchPatterns.push_back(std::make_shared<TokenString>(searchParameter.GetAdminRegionSearchString()));
 
-        adminRegionVisitor.AddSearchEntry(searchEntry);
-      }
-      else if (object.GetType()==refArea) {
-        AreaRef area;
+    // Search for region name
 
-        if (!database->GetAreaByOffset(object.GetFileOffset(),
-                                       area)) {
-          return false;
-        }
+    AdminRegionSearchVisitor adminRegionVisitor(searchParameter.GetStringMatcherFactory(),
+                                                regionSearchPatterns);
 
-        for (size_t r=0; r<area->rings.size(); r++) {
-          if (area->rings[r].IsOuterRing()) {
-            AdminRegionReverseLookupVisitor::SearchEntry searchEntry;
+    locationIndex->VisitAdminRegions(adminRegionVisitor);
+    if (searchParameter.IsAborted()){
+      osmscout::log.Debug() << "Search aborted";
+      return true;
+    }
 
-            searchEntry.object=object;
-            area->rings[r].GetBoundingBox(searchEntry.bbox);
+    for (const auto& regionMatch : adminRegionVisitor.matches) {
+      //std::cout << "Found region match '" << regionMatch.adminRegion->name << "' for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
 
-            searchEntry.coords.resize(area->rings[r].nodes.size());
-
-            for (size_t i=0; i<area->rings[r].nodes.size(); i++) {
-              searchEntry.coords[i]=area->rings[r].nodes[i].GetCoord();
-            }
-
-            adminRegionVisitor.AddSearchEntry(searchEntry);
-          }
-        }
-      }
-      else if (object.GetType()==refWay) {
-        WayRef way;
-
-        if (!database->GetWayByOffset(object.GetFileOffset(),
-                                      way)) {
-          return false;
-        }
-
-        AdminRegionReverseLookupVisitor::SearchEntry searchEntry;
-
-        searchEntry.object=object;
-        way->GetBoundingBox(searchEntry.bbox);
-
-        searchEntry.coords.resize(way->nodes.size());
-
-        for (size_t i=0; i<way->nodes.size(); i++) {
-          searchEntry.coords[i]=way->nodes[i].GetCoord();
-        }
-
-        adminRegionVisitor.AddSearchEntry(searchEntry);
+      if (searchParameter.GetPOISearchString().empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::match,
+                        regionMatch,
+                        result);
       }
       else {
-        return false;
+        size_t currentResultSize=result.results.size();
+
+        SearchForPOIForRegion(locationIndex,
+                              parameter,
+                              searchParameter.GetPOISearchString(),
+                              regionMatch,
+                              LocationSearchResult::match,
+                              result,
+                              breaker);
+
+        if (result.results.size()==currentResultSize &&
+            searchParameter.GetPartialMatch()) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddRegionResult(parameter,
+                          LocationSearchResult::match,
+                          regionMatch,
+                          result);
+        }
       }
     }
 
-    if (!VisitAdminRegions(adminRegionVisitor)) {
-      return false;
-    }
+    for (const auto& regionMatch : adminRegionVisitor.partialMatches) {
+      //std::cout << "Found region candidate '" << regionMatch.adminRegion->name << "' for pattern '" << regionMatch.tokenString->text << "'" << std::endl;
 
-    if (adminRegionVisitor.adminRegions.empty()) {
-      return true;
-    }
+      if (searchParameter.GetPOISearchString().empty()) {
+        AddRegionResult(parameter,
+                        LocationSearchResult::candidate,
+                        regionMatch,
+                        result);
+      }
+      else {
+        size_t currentResultSize=result.results.size();
 
-    LocationReverseLookupVisitor locationVisitor(result);
+        SearchForPOIForRegion(locationIndex,
+                              parameter,
+                              searchParameter.GetPOISearchString(),
+                              regionMatch,
+                              LocationSearchResult::candidate,
+                              result,
+                              breaker);
 
-    for (const auto& object : objects) {
-      locationVisitor.AddObject(object);
-    }
-
-    for (const auto& regionEntry : adminRegionVisitor.adminRegions) {
-      if (!locationIndex->VisitAdminRegionLocations(*regionEntry.second,
-                                                    locationVisitor,
-                                                    false)) {
-        return false;
+        if (result.results.size()==currentResultSize &&
+            searchParameter.GetPartialMatch()) {
+          // If we have not found any result for the given search entry, we create one for the "upper" object
+          // so that partial results are not lost
+          AddRegionResult(parameter,
+                          LocationSearchResult::candidate,
+                          regionMatch,
+                          result);
+        }
       }
     }
 
-    AddressReverseLookupVisitor addressVisitor(result);
-
-    for (const auto& object : objects) {
-      addressVisitor.AddObject(object);
-    }
-
-    for (const auto& location : locationVisitor.locations) {
-      if (!locationIndex->VisitLocationAddresses(*location.adminRegion,
-                                                 *location.location,
-                                                 addressVisitor)) {
-        return false;
-      }
-    }
+    result.results.sort();
+    result.results.unique();
 
     return true;
   }
-
-  /**
-   * Lookup one object
-   * @param object
-   *    The object to lookup
-   * @param result
-   *    List of results. The list may hold none, one or more entries for the object
-   * @return
-   *    True, if there was no error
-   */
-  bool LocationService::ReverseLookupObject(const ObjectFileRef& object,
-                                            std::list<ReverseLookupResult>& result) const
-  {
-    std::list<ObjectFileRef> objects;
-
-    objects.push_back(object);
-
-    return ReverseLookupObjects(objects,
-                                result);
-  }
-
-  bool LocationService::LoadNearAreas(const GeoCoord& location,
-                                      const TypeInfoSet &types,
-                                      std::vector<LocationDescriptionCandicate> &candidates,
-                                      const double maxDistance)
-  {
-    TypeConfigRef           typeConfig=database->GetTypeConfig();
-    AreaAreaIndexRef        areaAreaIndex=database->GetAreaAreaIndex();
-    GeoBox                  box=GeoBox::BoxByCenterAndRadius(location,maxDistance);
-    NameFeatureLabelReader  nameFeatureLabelLeader(*typeConfig);
-
-    if (!typeConfig ||
-        !areaAreaIndex) {
-      return false;
-    }
-    std::vector<DataBlockSpan> areaSpans;
-    TypeInfoSet                loadedTypes;
-
-    if (!areaAreaIndex->GetAreasInArea(*typeConfig,
-                                       box,
-                                       std::numeric_limits<size_t>::max(),
-                                       types,
-                                       areaSpans,
-                                       loadedTypes)) {
-      return false;
-    }
-
-    std::vector<AreaRef> areas;
-
-    if (areaSpans.empty()) {
-      return true;
-    }
-
-    if (!database->GetAreasByBlockSpans(areaSpans,
-                                        areas)) {
-      return false;
-    }
-
-    for (const auto& area : areas) {
-      bool    atPlace=false;
-      double  distance=std::numeric_limits<double>::max(); // In Km
-      double  bearing=0;
-      GeoBox  boundingBox;
-
-      area->GetBoundingBox(boundingBox);
-
-      for (const auto& ring : area->rings) {
-        if (ring.IsOuterRing()) {
-          if (!atPlace && IsCoordInArea(location,
-                                        ring.nodes)) {
-            atPlace=true;
-            //placeArea=area;
-            distance=0.0;
-            bearing=0;
-          }
-
-          for (size_t i=0; i<ring.nodes.size(); i++) {
-            double   currentDistance;
-            GeoCoord a;
-            GeoCoord b;
-            GeoCoord intersection;
-
-            if (i>0) {
-              a=ring.nodes[i-1].GetCoord();
-              b=ring.nodes[i].GetCoord();
-            }
-            else {
-              a=ring.nodes[ring.nodes.size()-1].GetCoord();
-              b=ring.nodes[i].GetCoord();
-            }
-
-            currentDistance=CalculateDistancePointToLineSegment(location,
-                                                                a,
-                                                                b,
-                                                                intersection);
-
-            currentDistance=GetEllipsoidalDistance(location,intersection);
-
-            if (!atPlace &&
-                currentDistance<distance) {
-              distance=currentDistance;
-              //distance=GetEllipsoidalDistance(location,intersection);
-              bearing=GetSphericalBearingInitial(intersection,location);
-            }
-          }
-        }
-      }
-
-      if (distance*1000 <= maxDistance){
-        candidates.push_back(LocationDescriptionCandicate(ObjectFileRef(area->GetFileOffset(),refArea),
-                                                          nameFeatureLabelLeader.GetLabel(area->GetFeatureValueBuffer()),
-                                                          distance,
-                                                          bearing,
-                                                          atPlace,
-                                                          boundingBox.GetSize()));
-      }
-    }
-
-    osmscout::log.Debug() << "Found " << areas.size() << " areas near " << location.GetDisplayText();
-
-    return true;
-  }
-
-  bool LocationService::LoadNearNodes(const GeoCoord& location, const TypeInfoSet &types,
-                                      std::vector<LocationDescriptionCandicate> &candidates,
-                                      const double maxDistance)
-  {
-    TypeConfigRef           typeConfig=database->GetTypeConfig();
-    AreaNodeIndexRef        areaNodeIndex=database->GetAreaNodeIndex();
-    GeoBox                  box=GeoBox::BoxByCenterAndRadius(location,maxDistance);
-    NameFeatureLabelReader  nameFeatureLabelLeader(*typeConfig);
-
-    if (!typeConfig ||
-        !areaNodeIndex) {
-      return false;
-    }
-    std::vector<FileOffset>  offsets;
-    TypeInfoSet              loadedAddressTypes;
-
-    if (!areaNodeIndex->GetOffsets(box, types, offsets, loadedAddressTypes)) {
-      return false;
-    }
-
-    if (offsets.empty()) {
-      return true;
-    }
-
-    std::vector<NodeRef> nodes;
-
-    if (!database->GetNodesByOffset(offsets, nodes)) {
-      return false;
-    }
-
-    if (nodes.empty()) {
-      return true;
-    }
-
-    for (const auto &node: nodes) {
-      double  distance=GetEllipsoidalDistance(location,node.get()->GetCoords()); // In Km
-      if (distance*1000 <= maxDistance){
-        double  bearing=GetSphericalBearingInitial(node.get()->GetCoords(),location);
-
-        candidates.push_back(LocationDescriptionCandicate(ObjectFileRef(node->GetFileOffset(),refNode),
-                                                          nameFeatureLabelLeader.GetLabel(node->GetFeatureValueBuffer()),
-                                                          distance,
-                                                          bearing,
-                                                          false,
-                                                          0.0));
-      }
-    }
-
-    osmscout::log.Debug() << "Found " << nodes.size() << " nodes near " << location.GetDisplayText();
-
-    return true;
-  }
-
-  bool LocationService::DistanceComparator(const LocationDescriptionCandicate &a,
-                                           const LocationDescriptionCandicate &b)
-  {
-    if (a.IsAtPlace() && b.IsAtPlace()) {
-      return a.GetSize()<b.GetSize();
-    }
-
-    return a.GetDistance() < b.GetDistance();
-  }
-
-  bool LocationService::DescribeLocationByName(const GeoCoord& location,
-                                               LocationDescription& description,
-                                               const double lookupDistance,
-                                               const double sizeFilter)
-  {
-    // search all addressable areas and nodes, sort it by distance, get first with name
-    TypeConfigRef typeConfig=database->GetTypeConfig();
-
-    if (!typeConfig) {
-      return false;
-    }
-
-    std::vector<LocationDescriptionCandicate> candidates;
-
-    TypeInfoSet nameTypes;
-
-    // near addressable areas
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeArea() &&
-          type->HasFeature(AddressFeature::NAME)) {
-        nameTypes.Set(type);
-      }
-    }
-
-    if (!nameTypes.Empty()) {
-      if (!LoadNearAreas(location,
-                         nameTypes,
-                         candidates,
-                         lookupDistance)) {
-        return false;
-      }
-    }
-
-    // near addressable nodes
-    nameTypes.Clear();
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeNode() &&
-          type->HasFeature(AddressFeature::NAME)) {
-        nameTypes.Set(type);
-      }
-    }
-
-    if (!nameTypes.Empty()) {
-      if (!LoadNearNodes(location,
-                         nameTypes,
-                         candidates,
-                         lookupDistance)) {
-        return false;
-      }
-    }
-
-    if (candidates.empty()) {
-      return true;
-    }
-
-    // sort all candidates by its distance from location
-    std::sort(candidates.begin(),candidates.end(),DistanceComparator);
-
-    for (const auto &candidate : candidates) {
-      std::list<ReverseLookupResult> result;
-
-      if (candidate.GetSize() > sizeFilter || candidate.GetName().empty()) {
-        continue;
-      }
-
-      if (!ReverseLookupObject(candidate.GetRef(), result)) {
-        return false;
-      }
-
-      if (!result.empty()) {
-        Place place=GetPlace(result);
-
-        if (candidate.IsAtPlace()) {
-          description.SetAtNameDescription(std::make_shared<LocationAtPlaceDescription>(place));
-        }
-        else {
-          description.SetAtNameDescription(std::make_shared<LocationAtPlaceDescription>(place,
-                                                                                        candidate.GetDistance()*1000, candidate.GetBearing()));
-        }
-
-        return true;
-      }
-      else if (!candidate.GetName().empty()) {
-        AdminRegionRef adminRegion;
-        POIRef         poi=std::make_shared<POI>();
-        LocationRef    location;
-        AddressRef     address;
-
-        poi->object=candidate.GetRef();
-        poi->name=candidate.GetName();
-        poi->regionOffset=0;
-
-        Place place(candidate.GetRef(),
-                    GetObjectFeatureBuffer(candidate.GetRef()),
-                    adminRegion,
-                    poi,
-                    location,
-                    address);
-
-        if (candidate.IsAtPlace()) {
-          description.SetAtNameDescription(std::make_shared<LocationAtPlaceDescription>(place));
-        }
-        else {
-          description.SetAtNameDescription(std::make_shared<LocationAtPlaceDescription>(place,
-                                                                                        candidate.GetDistance()*1000, candidate.GetBearing()));
-        }
-
-        return true;
-      }
-    }
-
-    return true;
-  }
-
-  bool LocationService::DescribeLocationByAddress(const GeoCoord& location,
-                                                  LocationDescription& description,
-                                                  const double lookupDistance,
-                                                  const double sizeFilter)
-  {
-    // search all addressable areas and nodes, sort it by distance, get first with address
-    TypeConfigRef typeConfig=database->GetTypeConfig();
-
-    if (!typeConfig) {
-      return false;
-    }
-
-    std::vector<LocationDescriptionCandicate> candidates;
-
-    TypeInfoSet addressTypes;
-
-    // near addressable areas
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeArea() &&
-          type->GetIndexAsAddress()) {
-        addressTypes.Set(type);
-      }
-    }
-
-    if (!addressTypes.Empty()) {
-      if (!LoadNearAreas(location,
-                         addressTypes,
-                         candidates,
-                         lookupDistance)){
-        return false;
-      }
-    }
-
-    // near addressable nodes
-    addressTypes.Clear();
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeNode() &&
-          type->GetIndexAsAddress()) {
-        addressTypes.Set(type);
-      }
-    }
-
-    if (!addressTypes.Empty()) {
-      if (!LoadNearNodes(location,
-                         addressTypes,
-                         candidates,
-                         lookupDistance)){
-        return false;
-      }
-    }
-
-    if (candidates.empty()) {
-      return true;
-    }
-
-    // sort all candidates by its distance from location
-    std::sort(candidates.begin(),candidates.end(),DistanceComparator);
-
-    for (const auto &candidate : candidates) {
-      if (candidate.GetSize() > sizeFilter){
-        continue;
-      }
-
-      std::list<ReverseLookupResult> result;
-      if (!ReverseLookupObject(candidate.GetRef(), result)) {
-        return false;
-      }
-
-      if (!result.empty()) {
-        Place place=GetPlace(result);
-
-        if (!place.GetAddress()) {
-          continue;
-        }
-
-        if (candidate.IsAtPlace()) {
-          description.SetAtAddressDescription(std::make_shared<LocationAtPlaceDescription>(place));
-        }
-        else {
-          description.SetAtAddressDescription(std::make_shared<LocationAtPlaceDescription>(place,
-                            candidate.GetDistance()*1000, candidate.GetBearing()));
-        }
-        return true;
-      }
-    }
-
-    return true;
-  }
-
-  bool LocationService::DescribeLocationByPOI(const GeoCoord& location,
-                                              LocationDescription& description,
-                                              const double lookupDistance,
-                                              const double sizeFilter)
-  {
-    // search all addressable areas and nodes, sort it by distance, get first with address
-    TypeConfigRef typeConfig=database->GetTypeConfig();
-
-    if (!typeConfig) {
-      return false;
-    }
-
-    std::vector<LocationDescriptionCandicate> candidates;
-
-    TypeInfoSet poiTypes;
-
-    // near addressable areas
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeArea() &&
-          type->GetIndexAsPOI()) {
-        poiTypes.Set(type);
-      }
-    }
-
-    if (!poiTypes.Empty()) {
-      if (!LoadNearAreas(location,
-                         poiTypes,
-                         candidates,
-                         lookupDistance)){
-        return false;
-      }
-    }
-
-    // near addressable nodes
-    poiTypes.Clear();
-    for (const auto& type : typeConfig->GetTypes()) {
-      if (type->CanBeNode() &&
-          type->GetIndexAsPOI()) {
-        poiTypes.Set(type);
-      }
-    }
-    if (!poiTypes.Empty()) {
-      if (!LoadNearNodes(location,
-                         poiTypes,
-                         candidates,
-                         lookupDistance)){
-        return false;
-      }
-    }
-
-    if (candidates.empty()) {
-      return true;
-    }
-
-    // sort all candidates by its distance from location
-    std::sort(candidates.begin(),candidates.end(),DistanceComparator);
-
-    for (const auto &candidate : candidates) {
-      if (candidate.GetSize() > sizeFilter){
-        continue;
-      }
-
-      std::list<ReverseLookupResult> result;
-      if (!ReverseLookupObject(candidate.GetRef(), result)) {
-        return false;
-      }
-
-      if (!result.empty()) {
-        Place place=GetPlace(result);
-
-        if (candidate.IsAtPlace()) {
-          description.SetAtPOIDescription(std::make_shared<LocationAtPlaceDescription>(place));
-        }
-        else {
-          description.SetAtPOIDescription(std::make_shared<LocationAtPlaceDescription>(place,
-                                                                                       candidate.GetDistance()*1000,
-                                                                                       candidate.GetBearing()));
-        }
-        return true;
-      }
-    }
-
-    return true;
-  }
-
-  bool LocationService::DescribeLocation(const GeoCoord& location,
-                                         LocationDescription& description)
-  {
-    description.SetCoordDescription(std::make_shared<LocationCoordDescription>(location));
-
-    if (!DescribeLocationByName(location,
-                                description)) {
-      return false;
-    }
-
-    if (!DescribeLocationByAddress(location,
-                                   description)) {
-      return false;
-    }
-
-    if (!DescribeLocationByPOI(location,
-                               description)) {
-      return false;
-    }
-
-    return true;
-  }
-
 }

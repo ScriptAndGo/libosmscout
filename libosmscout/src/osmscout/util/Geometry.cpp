@@ -100,9 +100,9 @@ namespace osmscout {
   }
 
   /**
-    Calculating basic cost for the A* algorithm based on the
-    spherical distance of two points on earth
-    */
+   * Calculating basic cost for the A* algorithm based on the
+   * spherical distance of two points on earth [km].
+   */
   double GetSphericalDistance(const GeoCoord& a,
                               const GeoCoord& b)
   {
@@ -124,9 +124,9 @@ namespace osmscout {
   }
 
   /**
-    Calculating Vincenty's inverse for getting the ellipsoidal distance
-    of two points on earth.
-    */
+   * Calculating Vincenty's inverse for getting the ellipsoidal distance
+   * of two points on earth [km].
+   */
   double GetEllipsoidalDistance(double aLon, double aLat,
                                 double bLon, double bLat)
   {
@@ -284,35 +284,6 @@ namespace osmscout {
     lon2=lon1+L*180.0/M_PI;
   }
 
-  /**
-   * Taken the path from A to B over a sphere return the bearing (0..2PI) at the starting point A.
-   */
-  double GetSphericalBearingInitial(double aLon, double aLat,
-                                    double bLon, double bLat)
-  {
-    aLon=aLon*M_PI/180;
-    aLat=aLat*M_PI/180;
-
-    bLon=bLon*M_PI/180;
-    bLat=bLat*M_PI/180;
-
-    double dLon=bLon-aLon;
-
-    double sindLon, sinaLat, sinbLat;
-    double cosdLon, cosaLat, cosbLat;
-    sincos(dLon, sindLon, cosdLon);
-    sincos(aLat, sinaLat, cosaLat);
-    sincos(bLat, sinbLat, cosbLat);
-
-    double y=sindLon*cosbLat;
-    double x=cosaLat*sinbLat-sinaLat*cosbLat*cosdLon;
-
-    double bearing=atan2(y,x);
-    //double bearing=fmod(atan2(y,x)+2*M_PI,2*M_PI);
-
-    return bearing;
-  }
-
   double GetSphericalBearingInitial(const GeoCoord& a,
                                     const GeoCoord& b)
   {
@@ -341,14 +312,14 @@ namespace osmscout {
   /**
    * Taken the path from A to B over a sphere return the bearing (0..2PI) at the destination point B.
    */
-  double GetSphericalBearingFinal(double aLon, double aLat,
-                                  double bLon, double bLat)
+  double GetSphericalBearingFinal(const GeoCoord& a,
+                                  const GeoCoord& b)
   {
-    aLon=aLon*M_PI/180;
-    aLat=aLat*M_PI/180;
+    double aLon=a.GetLon()*M_PI/180;
+    double aLat=a.GetLat()*M_PI/180;
 
-    bLon=bLon*M_PI/180;
-    bLat=bLat*M_PI/180;
+    double bLon=b.GetLon()*M_PI/180;
+    double bLat=b.GetLat()*M_PI/180;
 
     double dLon=aLon-bLon;
 
@@ -385,7 +356,7 @@ namespace osmscout {
       grad+=360;
     }
 
-    if (grad>0 && grad<=45) {
+    if (grad>=0 && grad<=45) {
       return "N";
     }
     else if (grad>45 && grad<=135) {
@@ -397,7 +368,7 @@ namespace osmscout {
     else if (grad>225 && grad<=315) {
       return "W";
     }
-    else if (grad>315 && grad<=360) {
+    else if (grad>315 && grad<360) {
       return "N";
     }
 
@@ -700,6 +671,30 @@ namespace osmscout {
     }
 
     return true;
+  }
+
+  void GeoBoxPartitioner::CalculateBox()
+  {
+    if (direction==Direction::HORIZONTAL) {
+      double delta=(box.GetMaxLon()-box.GetMinLon())/parts;
+      double start=box.GetMinLon()+currentIndex*delta;
+      double end=box.GetMinLon()+(currentIndex+1)*delta;
+
+      currentBox=GeoBox(GeoCoord(box.GetMinLat(),
+                                 start),
+                        GeoCoord(box.GetMaxLat(),
+                                 end));
+    }
+    else {
+      double delta=(box.GetMaxLat()-box.GetMinLat())/parts;
+      double start=box.GetMinLat()+currentIndex*delta;
+      double end=box.GetMinLat()+(currentIndex+1)*delta;
+
+      currentBox=GeoBox(GeoCoord(start,
+                                 box.GetMinLon()),
+                        GeoCoord(end,
+                                 box.GetMaxLon()));
+    }
   }
 
   CellDimension cellDimension[] = {

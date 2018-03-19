@@ -336,8 +336,8 @@ int main(int argc, char* argv[])
 
 		magnification.SetLevel(level);
 
-		osmscout::OSMTileId     tileA(osmscout::GeoCoord(latBottom, lonLeft).GetOSMTile(magnification));
-		osmscout::OSMTileId     tileB(osmscout::GeoCoord(latTop, lonRight).GetOSMTile(magnification));
+		osmscout::OSMTileId     tileA(osmscout::OSMTileId::GetOSMTile(osmscout::GeoCoord(latBottom, lonLeft), magnification));
+		osmscout::OSMTileId     tileB(osmscout::OSMTileId::GetOSMTile(osmscout::GeoCoord(latTop, lonRight), magnification));
 		uint32_t                xTileStart = std::min(tileA.GetX(), tileB.GetX());
 		uint32_t                xTileEnd = std::max(tileA.GetX(), tileB.GetX());
 		uint32_t                xTileCount = xTileEnd - xTileStart + 1;
@@ -474,7 +474,7 @@ int main(int argc, char* argv[])
 				totalTime += time;
 
 				std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-				std::wstring output = converter.from_bytes(osmscout::NumberToString(level)) + L"_" + converter.from_bytes(osmscout::NumberToString(x)) + L"_" + converter.from_bytes(osmscout::NumberToString(y)) + L".png";
+				std::wstring output = std::to_wstring(level) + L"_" + std::to_wstring(x) + L"_" + std::to_wstring(y) + L".png";
 
 				write_png(bmp, wicFactory, output.c_str());
 			}

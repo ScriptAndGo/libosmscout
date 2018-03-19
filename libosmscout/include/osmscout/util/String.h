@@ -22,7 +22,9 @@
 
 #include <limits>
 #include <list>
+#include <memory>
 #include <string>
+#include <chrono>
 
 #include <osmscout/CoreFeatures.h>
 
@@ -38,6 +40,29 @@ namespace osmscout {
    *
    * General utility stuff like enhanced string operations, special data structures...
    */
+
+  /**
+   * \ingroup Util
+   * Convert the given string to a boolean value
+   *
+   * @param string
+   *    string with a potential boolean value (either 'true' or 'false')
+   * @param value
+   *    value to copy the result to if no error occured
+   * @return
+   *    'true' if the value was parsed, else 'false'
+   */
+  extern OSMSCOUT_API bool StringToBool(const char* string, bool& value);
+
+  /**
+   * Rteurns a string representation of the given boolean value (either 'true' or 'false')
+   *
+   * @param value
+   *    value to return
+   * @return
+   *    result of the conversion
+   */
+  extern OSMSCOUT_API const char* BoolToString(bool value);
 
   /**
    * \ingroup Util
@@ -69,99 +94,6 @@ namespace osmscout {
 
     return res;
   }
-
-  template<typename N>
-  std::string NumberToStringSigned(const N& number)
-  {
-    std::string res;
-    N           value(number);
-    bool        negative=false;
-
-    if (value<0) {
-      negative=true;
-      value=-value;
-    }
-
-    res.reserve(20);
-
-    while (value!=0) {
-      res.insert(0,1,(char)('0'+value%10));
-      value=value/10;
-    }
-
-    if (res.empty()) {
-      res.insert(0,1,'0');
-    }
-    else if (negative) {
-      res.insert(0,1,'-');
-    }
-
-    return res;
-  }
-
-  template<typename N>
-  std::string NumberToStringUnsigned(const N& number)
-  {
-    std::string res;
-    N           value(number);
-
-    res.reserve(20);
-
-    while (value!=0) {
-      res.insert(0,1,(char)('0'+value%10));
-      value=value/10;
-    }
-
-    if (res.empty()) {
-      res.insert(0,1,'0');
-    }
-
-    return res;
-  }
-
-  template<bool is_signed, typename N>
-  struct NumberToStringTemplated
-  {
-  };
-
-  template<typename N>
-  struct NumberToStringTemplated<true, N>
-  {
-    static inline std::string f(const N& number)
-    {
-      return NumberToStringSigned<N>(number);
-    }
-  };
-
-  template<typename N>
-  struct NumberToStringTemplated<false, N>
-  {
-    static inline std::string f(const N& number)
-    {
-      return NumberToStringUnsigned<N>(number);
-    }
-  };
-
-  /**
-   * \ingroup Util
-   * Converts the given (possibly negative) decimal number to a std::string.
-   */
-  template<typename N>
-  inline std::string NumberToString(const N& number)
-  {
-    return NumberToStringTemplated<std::numeric_limits<N>::is_signed, N>
-      ::f(number);
-  }
-
-  /**
-   * \ingroup Util
-   */
-  extern OSMSCOUT_API bool StringToNumber(const char* string, double& value);
-
-  /**
-   * \ingroup Util
-   */
-  extern OSMSCOUT_API bool StringToNumber(const std::string& string, double& value);
 
   template<typename N>
   bool StringToNumberSigned(const std::string& string,
@@ -308,7 +240,7 @@ namespace osmscout {
   template<typename N>
   struct StringToNumberTemplated<true, N>
   {
-    static inline unsigned int f(const std::string& string,
+    static inline bool f(const std::string& string,
                                  N& number,
                                  size_t base=10)
     {
@@ -319,7 +251,7 @@ namespace osmscout {
   template<typename N>
   struct StringToNumberTemplated<false, N>
   {
-    static inline unsigned int f(const std::string& string,
+    static inline bool f(const std::string& string,
                                  N& number,
                                  size_t base=10)
     {
@@ -336,9 +268,9 @@ namespace osmscout {
    *  "-13" => -13
    */
   template<typename N>
-  inline unsigned int StringToNumber(const std::string& string,
-                                     N& number,
-                                     size_t base=10)
+  inline bool StringToNumber(const std::string& string,
+                             N& number,
+                             size_t base=10)
   {
     return StringToNumberTemplated<std::numeric_limits<N>::is_signed, N>
       ::f(string,number,base);
@@ -346,17 +278,26 @@ namespace osmscout {
 
   /**
    * \ingroup Util
+   */
+  extern OSMSCOUT_API bool StringToNumber(const char* string, double& value);
+
+  /**
+   * \ingroup Util
+   */
+  extern OSMSCOUT_API bool StringToNumber(const std::string& string, double& value);
+
+  /**
+   * \ingroup Util
    *
    */
-  extern OSMSCOUT_API std::string StringListToString(const std::list<std::string>& list,
-                                                     const std::string& separator="/");
+
+  extern OSMSCOUT_API size_t CountWords(const std::string& text);
 
   /**
    * \ingroup Util
    * Converts the given string into a list of whitespace separated (std::isspace()) strings.
    */
-  extern OSMSCOUT_API void SplitStringAtSpace(const std::string& input,
-                                              std::list<std::string>& tokens);
+  extern OSMSCOUT_API std::list<std::string> SplitStringAtSpace(const std::string& input);
 
   /**
    * \ingroup Util
@@ -386,6 +327,12 @@ namespace osmscout {
    */
   extern OSMSCOUT_API void SimplifyTokenList(std::list<std::string>& tokens);
 
+  extern OSMSCOUT_API std::string GetTokensFromStart(const std::list<std::string>& tokens,
+                                                    size_t count);
+
+  extern OSMSCOUT_API std::string GetTokensFromEnd(const std::list<std::string>& tokens,
+                                                   size_t count);
+
   /**
    * \ingroup Util
    * Given a list of strings, individual strings will be combined into a given
@@ -410,6 +357,30 @@ namespace osmscout {
   /**
    * \ingroup Util
    *
+   * Converts the given std::string with content in the current locale to a std::wstring
+   *
+   * @param text
+   *    String to get converted
+   * @return
+   *    corresponding std::wstring
+   */
+  extern OSMSCOUT_API std::wstring LocaleStringToWString(const std::string& text);
+
+  /**
+   * \ingroup Util
+   *
+   * Converts the given std::wstring to a std::string with content in the current locale
+   *
+   * @param text
+   *    String to get converted
+   * @return
+   *    corresponding std::string
+   */
+  extern OSMSCOUT_API std::string WStringToLocaleString(const std::wstring& text);
+
+  /**
+   * \ingroup Util
+   *
    * Convert the given std::string containign a UTF8 character sequence to a std::wstring
    *
    * @param text
@@ -422,6 +393,18 @@ namespace osmscout {
   /**
    * \ingroup Util
    *
+   * Convert the given std::string containign a UTF8 character sequence to a std::u32string
+   *
+   * @param text
+   *    String to get converted
+   * @return
+   *    corresponding std::wstring
+   */
+  extern OSMSCOUT_API std::u32string UTF8StringToU32String(const std::string& text);
+
+  /**
+   * \ingroup Util
+   *
    * Convert the given std::wstring to a std::string containing a corresponding UTF8 character sequence
    *
    * @param text
@@ -430,6 +413,32 @@ namespace osmscout {
    *    the converted std::string
    */
   extern OSMSCOUT_API std::string WStringToUTF8String(const std::wstring& text);
+
+  /**
+   * \ingroup Util
+   *
+   * Convert the given std::string in the current locale to a std::string containing a corresponding
+   * UTF8 character sequence
+   *
+   * @param text
+   *    the std::wstring to get converted
+   * @return
+   *    the converted std::string
+   */
+  extern OSMSCOUT_API std::string LocaleStringToUTF8String(const std::string& text);
+
+  /**
+   * \ingroup Util
+   *
+   * Convert the given std::string in UTF-8 a std::string containing to corresponding string in the
+   * current locale.
+   *
+   * @param text
+   *    the std::wstring to get converted
+   * @return
+   *    the converted std::string
+   */
+  extern OSMSCOUT_API std::string UTF8StringToLocaleString(const std::string& text);
 
   /**
    * Convert the given std::string containing a UTF8 character sequence to upper case using
@@ -456,6 +465,45 @@ namespace osmscout {
    * @note that a global C++ locale must be set for more than simple ASCII conversions to work.
    */
   extern OSMSCOUT_API std::string UTF8StringToLower(const std::string& text);
+
+  /**
+   * Normalise the given std::string containing a UTF8 character sequence
+   * for tolerant comparison. It may be used for string lookup typed by human,
+   * for example street name, where string are not binary equals,
+   * but are "same" for human - for example "Baker Street" and "Baker  street"
+   *
+   * @param text
+   *    Text to get converted
+   * @return
+   *    Converted text
+   *
+   * @note that a global C++ locale must be set for more than simple ASCII conversions to work.
+   */
+  extern OSMSCOUT_API std::string UTF8NormForLookup(const std::string& text);
+
+  typedef std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> Timestamp;
+
+  /**
+   * Parse time string in ISO 8601 format "2017-11-26T13:46:12.124Z" (UTC timezone)
+   * to Timestamp (std::chrono::time_point with millisecond accuracy).
+   *
+   * Note that format is not locale specific
+   *
+   * @param timeStr
+   * @param timestamp
+   * @return true on success
+   */
+  extern OSMSCOUT_API bool ParseISO8601TimeString(const std::string &timeStr, Timestamp &timestamp);
+
+  /**
+   * Format Timestamp to string in ISO8601 format "2017-11-26T13:46:12.124Z"
+   * for UTC timezone.
+   *
+   * @param timestamp
+   * @return time string
+   */
+  extern OSMSCOUT_API std::string TimestampToISO8601TimeString(const Timestamp &timestamp);
+
 }
 
 #endif

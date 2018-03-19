@@ -3,6 +3,10 @@
 #include <d2d1.h>
 #include <dwrite.h>
 
+/*
+ * This structure is needed to hold the renderer context. It is passed around as a void* pointer,
+ * typically the clientDrawingContext in the methods below.
+ */
 struct PathTextDrawingContext
 {
     ID2D1RenderTarget* d2DContext;
@@ -13,15 +17,17 @@ struct PathTextDrawingContext
 class PathTextRenderer : public IDWriteTextRenderer
 {
 public:
-    static void CreatePathTextRenderer(
-        FLOAT pixelsPerDip,
-        _Outptr_ PathTextRenderer **textRenderer
-        );
+	// Static creation method that takes care of allocating a renderer
+	// AND registering it as a COM component.
+	static void CreatePathTextRenderer(float pixelsPerDip, PathTextRenderer **textRenderer);
 
-    PathTextRenderer(
-        FLOAT pixelsPerDip
-        );
+	//
+	// Public destruction method for PathTextRenderer. This method
+	// does the exact opposite of CreatePathTextRenderer.
+	//
+	static void DestroyPathTextRenderer(PathTextRenderer *textRenderer);
 
+	// All the STDMETHOD have been lifted from the IDWriteTextRenderer interface
     STDMETHOD(DrawGlyphRun)(
         _In_opt_ void* clientDrawingContext,
         FLOAT baselineOriginX,
@@ -83,6 +89,8 @@ public:
     STDMETHOD_(ULONG, Release)() override;
 
 private:
-    FLOAT m_pixelsPerDip;   // Number of pixels per DIP.
+    float m_pixelsPerDip;   // Number of pixels per DIP.
     UINT m_ref;             // Reference count for AddRef and Release.
+
+    PathTextRenderer(float pixelsPerDip);
 };

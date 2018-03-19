@@ -19,17 +19,19 @@
 
 #include "MainWindow.h"
 
+#include <osmscout/util/Logger.h>
+
 #include <QGuiApplication>
 #include "SettingsDialog.h"
 
-MainWindow::MainWindow(DBThread *dbThread)
+MainWindow::MainWindow(DBThreadRef dbThread)
  : QQmlApplicationEngine(QUrl("qrc:/qml/main.qml")),
    dbThread(dbThread)
-{  
-  connect(dbThread,
-          SIGNAL(InitialisationFinished(DatabaseLoadedResponse)),
+{
+  connect(dbThread.get(),
+          SIGNAL(initialisationFinished(const DatabaseLoadedResponse&)),
           this,
-          SLOT(InitialisationFinished(DatabaseLoadedResponse)));
+          SLOT(InitialisationFinished(const DatabaseLoadedResponse&)));
 }
 
 MainWindow::~MainWindow()
@@ -39,5 +41,5 @@ MainWindow::~MainWindow()
 
 void MainWindow::InitialisationFinished(const DatabaseLoadedResponse& /*response*/)
 {
-  std::cout << "InitialisationFinished()" << std::endl;
+  osmscout::log.Info() << "InitialisationFinished()";
 }

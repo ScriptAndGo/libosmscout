@@ -29,8 +29,11 @@
 #include <osmscout/private/ClientQtImportExport.h>
 
 #include <osmscout/DBThread.h>
+#include <osmscout/MapRenderer.h>
 #include <osmscout/SearchLocationModel.h>
 #include <osmscout/InputHandler.h>
+#include <osmscout/OSMScoutQt.h>
+#include <osmscout/OverlayObject.h>
 
 /**
  * \defgroup QtAPI Qt API
@@ -61,6 +64,7 @@ class OSMSCOUT_CLIENT_QT_API MapWidget : public QQuickPaintedItem
   Q_PROPERTY(bool     showCurrentPosition READ getShowCurrentPosition WRITE setShowCurrentPosition)
   Q_PROPERTY(bool     lockToPosition READ isLockedToPosition WRITE setLockToPosition NOTIFY lockToPossitionChanged)
   Q_PROPERTY(QString  stylesheetFilename READ GetStylesheetFilename NOTIFY stylesheetFilenameChanged)
+  Q_PROPERTY(QString  renderingType READ GetRenderingType WRITE SetRenderingType NOTIFY renderingTypeChanged)
   
   Q_PROPERTY(bool stylesheetHasErrors           READ stylesheetHasErrors              NOTIFY styleErrorsChanged)
   Q_PROPERTY(int stylesheetErrorLine            READ firstStylesheetErrorLine         NOTIFY styleErrorsChanged)
@@ -68,9 +72,9 @@ class OSMSCOUT_CLIENT_QT_API MapWidget : public QQuickPaintedItem
   Q_PROPERTY(QString stylesheetErrorDescription READ firstStylesheetErrorDescription  NOTIFY styleErrorsChanged)  
 
 private:
+  MapRenderer      *renderer;
 
   MapView          *view;
-  double           mapDpi;
 
   InputHandler     *inputHandler;
   TapRecognizer    tapRecognizer;     
@@ -82,6 +86,7 @@ private:
   osmscout::GeoCoord currentPosition;
   bool horizontalAccuracyValid;
   double horizontalAccuracy;
+  RenderingType renderingType;
   
   QMap<int, osmscout::GeoCoord> marks;
 
@@ -99,6 +104,7 @@ signals:
   void stylesheetFilenameChanged();
   void styleErrorsChanged();
   void databaseLoaded(osmscout::GeoBox);
+  void renderingTypeChanged(QString type);
   
 public slots:
   void changeView(const MapView &view);
@@ -119,6 +125,12 @@ public slots:
   void right();
   void up();
   void down();
+
+  /**
+   * Rotate view to specified angle [radians; [0 ~ 2*PI) ]
+   * @param angle
+   */
+  void rotateTo(double angle);
   void rotateLeft();
   void rotateRight();
 
@@ -133,19 +145,43 @@ public slots:
   void showLocation(LocationEntry* location);
 
   void locationChanged(bool locationValid, double lat, double lon, bool horizontalAccuracyValid, double horizontalAccuracy);
-  
+
+  /**
+   * Add "mark" (small red circle) on top of map.
+   * It will be rendered in UI thread, count of marks should be limited.
+   */
   void addPositionMark(int id, double lat, double lon);
   void removePositionMark(int id);
+
+  /**
+   * Method for registering map overlay objects.
+   * Usage from QML:
+   *
+   *    var way=map.createOverlayWay();
+   *    way.addPoint(50.09180646851823, 14.498789861494872);
+   *    way.addPoint(50.09180646851823, 14.60);
+   *    map.addOverlayObject(0,way);
+   *
+   * @param id
+   * @param o
+   */
+  void addOverlayObject(int id, QObject *o);
+  void removeOverlayObject(int id);
+  void removeAllOverlayObjects();
+
+  OverlayWay *createOverlayWay(QString type="_route");
+  OverlayArea *createOverlayArea(QString type="_highlighted");
+  OverlayNode *createOverlayNode(QString type="_highlighted");
 
   bool toggleDebug();
   bool toggleInfo();
 
 private slots:
 
-  void onTap(const QPoint p);
-  void onDoubleTap(const QPoint p);
-  void onLongTap(const QPoint p);
-  void onTapLongTap(const QPoint p);
+  virtual void onTap(const QPoint p);
+  virtual void onDoubleTap(const QPoint p);
+  virtual void onLongTap(const QPoint p);
+  virtual void onTapLongTap(const QPoint p);
   
   void onMapDPIChange(double dpi);  
   
@@ -242,7 +278,7 @@ public:
     projection.Set(GetCenter(),
                view->angle,
                view->magnification,
-               mapDpi,
+               view->mapDpi,
                // to avoid invalid projection when scene is not finished yet
                w==0? 100:w,
                h==0? 100:h);
@@ -271,6 +307,9 @@ public:
   bool isDatabaseLoaded();
   Q_INVOKABLE bool isInDatabaseBoundingBox(double lat, double lon);
   Q_INVOKABLE QPointF screenPosition(double lat, double lon);
+
+  QString GetRenderingType() const;
+  void SetRenderingType(QString type);
 };
 
 #endif

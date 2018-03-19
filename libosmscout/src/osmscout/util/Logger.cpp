@@ -28,11 +28,6 @@ namespace osmscout {
   // Global logger
   Log log;
 
-  Logger::Destination::~Destination()
-  {
-    // no code
-  }
-
   Logger::Line::Line(Destination& destination)
   : destination(destination)
   {
@@ -86,11 +81,6 @@ namespace osmscout {
     // no code
   }
 
-  Logger::~Logger()
-  {
-    // no code
-  }
-
   Logger::Line Logger::Debug()
   {
     return Log(DEBUG);
@@ -111,6 +101,10 @@ namespace osmscout {
     return Log(ERROR);
   }
 
+  Logger::Destination::Destination()
+  {
+  }
+  
   StreamLogger::StreamDestination::StreamDestination(std::ostream& stream)
   : stream(stream)
   {

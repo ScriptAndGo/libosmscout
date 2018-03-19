@@ -25,6 +25,9 @@
 
 #include <osmscout/Types.h>
 
+#include <osmscout/routing/RoutingService.h>
+#include <osmscout/routing/RouteNode.h>
+#include <osmscout/Intersection.h>
 
 #include <osmscout/import/RawNode.h>
 #include <osmscout/import/RawWay.h>
@@ -32,10 +35,6 @@
 
 #include <osmscout/import/GenRawWayIndex.h>
 #include <osmscout/import/GenRawRelIndex.h>
-
-#include <osmscout/RoutingService.h>
-#include <osmscout/RouteNode.h>
-#include <osmscout/Intersection.h>
 
 #include <osmscout/import/GenTypeDat.h>
 
@@ -60,6 +59,8 @@
 #include <osmscout/import/GenAreaNodeIndex.h>
 #include <osmscout/import/GenAreaWayIndex.h>
 
+#include <osmscout/import/GenCoverageIndex.h>
+
 #include <osmscout/import/GenLocationIndex.h>
 #include <osmscout/import/GenOptimizeAreaWayIds.h>
 #include <osmscout/import/GenWaterIndex.h>
@@ -83,9 +84,9 @@ namespace osmscout {
 
   static const size_t defaultStartStep=1;
 #if defined(OSMSCOUT_IMPORT_HAVE_LIB_MARISA)
-  static const size_t defaultEndStep=24;
+  static const size_t defaultEndStep=25;
 #else
-  static const size_t defaultEndStep=23;
+  static const size_t defaultEndStep=24;
 #endif
 
   ImportParameter::Router::Router(uint8_t vehicleMask,
@@ -138,6 +139,7 @@ namespace osmscout {
      routeNodeBlockSize(500000),
      assumeLand(AssumeLandStrategy::automatic),
      langOrder({"#"}),
+     maxAdminLevel(10),
      firstFreeOSMId(((OSMId)1) << ((sizeof(OSMId)*8)-2)),
      fillWaterArea(20)
   {
@@ -162,6 +164,11 @@ namespace osmscout {
   std::string ImportParameter::GetDestinationDirectory() const
   {
     return destinationDirectory;
+  }
+
+  std::string ImportParameter::GetBoundingPolygonFile() const
+  {
+    return boundingPolygonFile;
   }
 
   ImportErrorReporterRef ImportParameter::GetErrorReporter() const
@@ -319,12 +326,12 @@ namespace osmscout {
     return areaAreaIndexMaxMag;
   }
 
-  size_t ImportParameter::GetWaterIndexMinMag() const
+  uint32_t ImportParameter::GetWaterIndexMinMag() const
   {
     return waterIndexMinMag;
   }
 
-  size_t ImportParameter::GetWaterIndexMaxMag() const
+  uint32_t ImportParameter::GetWaterIndexMaxMag() const
   {
     return waterIndexMaxMag;
   }
@@ -334,12 +341,12 @@ namespace osmscout {
     return optimizationMaxWayCount;
   }
 
-  size_t ImportParameter::GetOptimizationMaxMag() const
+  uint32_t ImportParameter::GetOptimizationMaxMag() const
   {
     return optimizationMaxMag;
   }
 
-  size_t ImportParameter::GetOptimizationMinMag() const
+  uint32_t ImportParameter::GetOptimizationMinMag() const
   {
     return optimizationMinMag;
   }
@@ -384,6 +391,11 @@ namespace osmscout {
     return this->altLangOrder;
   }
 
+  size_t ImportParameter::GetMaxAdminLevel() const
+  {
+    return maxAdminLevel;
+  }
+
   void ImportParameter::SetMapfiles(const std::list<std::string>& mapfiles)
   {
     this->mapfiles=mapfiles;
@@ -397,6 +409,11 @@ namespace osmscout {
   void ImportParameter::SetDestinationDirectory(const std::string& destinationDirectory)
   {
     this->destinationDirectory=destinationDirectory;
+  }
+
+  void ImportParameter::SetBoundingPolygonFile(const std::string& boundingPolygonFile)
+  {
+    this->boundingPolygonFile=boundingPolygonFile;
   }
 
   void ImportParameter::SetErrorReporter(const ImportErrorReporterRef& errorReporter)
@@ -561,12 +578,12 @@ namespace osmscout {
     this->areaWayIndexMaxLevel=areaWayIndexMaxLevel;
   }
 
-  void ImportParameter::SetWaterIndexMinMag(size_t waterIndexMinMag)
+  void ImportParameter::SetWaterIndexMinMag(uint32_t waterIndexMinMag)
   {
     this->waterIndexMinMag=waterIndexMinMag;
   }
 
-  void ImportParameter::SetWaterIndexMaxMag(size_t waterIndexMaxMag)
+  void ImportParameter::SetWaterIndexMaxMag(uint32_t waterIndexMaxMag)
   {
     this->waterIndexMaxMag=waterIndexMaxMag;
   }
@@ -576,12 +593,12 @@ namespace osmscout {
     this->optimizationMaxWayCount=optimizationMaxWayCount;
   }
 
-  void ImportParameter::SetOptimizationMaxMag(size_t optimizationMaxMag)
+  void ImportParameter::SetOptimizationMaxMag(uint32_t optimizationMaxMag)
   {
     this->optimizationMaxMag=optimizationMaxMag;
   }
 
-  void ImportParameter::SetOptimizationMinMag(size_t optimizationMinMag)
+  void ImportParameter::SetOptimizationMinMag(uint32_t optimizationMinMag)
   {
     this->optimizationMinMag=optimizationMinMag;
   }
@@ -623,6 +640,11 @@ namespace osmscout {
     this->altLangOrder = altLangOrder;
   }
 
+  void ImportParameter::SetMaxAdminLevel(size_t maxAdminLevel)
+  {
+    this->maxAdminLevel=maxAdminLevel;
+  }
+
   void ImportParameter::SetFirstFreeOSMId(OSMId id)
   {
     firstFreeOSMId=id;
@@ -636,6 +658,21 @@ namespace osmscout {
   size_t ImportParameter::GetFillWaterArea() const
   {
     return fillWaterArea;
+  }
+
+  void ImportParameter::SetPreprocessorFactory(const PreprocessorFactoryRef& factory)
+  {
+    this->preprocessorFactory=factory;
+  }
+
+  std::unique_ptr<Preprocessor> ImportParameter::GetPreprocessor(const std::string& filename,
+                                                                 PreprocessorCallback& callback) const
+  {
+    if (preprocessorFactory) {
+      return preprocessorFactory->GetProcessor(filename,
+                                              callback);
+    }
+    return nullptr;
   }
 
   void ImportModuleDescription::SetName(const std::string& name)
@@ -804,25 +841,29 @@ namespace osmscout {
     modules.push_back(std::make_shared<AreaAreaIndexGenerator>());
 
     /* 18 */
-    modules.push_back(std::make_shared<WaterIndexGenerator>());
+    modules.push_back(std::make_shared<CoverageIndexGenerator>());
 
     /* 19 */
-    modules.push_back(std::make_shared<OptimizeAreasLowZoomGenerator>());
+    modules.push_back(std::make_shared<WaterIndexGenerator>());
 
     /* 20 */
-    modules.push_back(std::make_shared<OptimizeWaysLowZoomGenerator>());
+    modules.push_back(std::make_shared<OptimizeAreasLowZoomGenerator>());
 
     /* 21 */
-    modules.push_back(std::make_shared<LocationIndexGenerator>());
+    modules.push_back(std::make_shared<OptimizeWaysLowZoomGenerator>());
 
     /* 22 */
-    modules.push_back(std::make_shared<RouteDataGenerator>());
+    modules.push_back(std::make_shared<LocationIndexGenerator>());
 
     /* 23 */
+    modules.push_back(std::make_shared<RouteDataGenerator>());
+
+    /* 24 */
     modules.push_back(std::make_shared<IntersectionIndexGenerator>());
 
+
 #if defined(OSMSCOUT_IMPORT_HAVE_LIB_MARISA)
-    /* 24 */
+    /* 25 */
     modules.push_back(std::make_shared<TextIndexGenerator>());
 #endif
   }
@@ -830,10 +871,10 @@ namespace osmscout {
   void Importer::DumpTypeConfigData(const TypeConfig& typeConfig,
                                     Progress& progress)
   {
-    progress.Info("Number of types: "+NumberToString(typeConfig.GetTypes().size()));
-    progress.Info("Number of node types: "+NumberToString(typeConfig.GetNodeTypes().size())+" "+NumberToString(typeConfig.GetNodeTypeIdBytes())+" byte(s)");
-    progress.Info("Number of way types: "+NumberToString(typeConfig.GetWayTypes().size())+" "+NumberToString(typeConfig.GetWayTypeIdBytes())+" byte(s)");
-    progress.Info("Number of area types: "+NumberToString(typeConfig.GetAreaTypes().size())+" "+NumberToString(typeConfig.GetAreaTypeIdBytes())+" byte(s)");
+    progress.Info("Number of types: "+std::to_string(typeConfig.GetTypes().size()));
+    progress.Info("Number of node types: "+std::to_string(typeConfig.GetNodeTypes().size())+" "+std::to_string(typeConfig.GetNodeTypeIdBytes())+" byte(s)");
+    progress.Info("Number of way types: "+std::to_string(typeConfig.GetWayTypes().size())+" "+std::to_string(typeConfig.GetWayTypeIdBytes())+" byte(s)");
+    progress.Info("Number of area types: "+std::to_string(typeConfig.GetAreaTypes().size())+" "+std::to_string(typeConfig.GetAreaTypeIdBytes())+" byte(s)");
   }
 
   void Importer::DumpModuleDescription(const ImportModuleDescription& description,
@@ -930,7 +971,7 @@ namespace osmscout {
                                moduleDescription);
 
         progress.SetStep("Step #"+
-                         NumberToString(currentStep)+
+                         std::to_string(currentStep)+
                          " - "+
                          moduleDescription.GetName());
         progress.Info("Module description: "+moduleDescription.GetDescription());
@@ -1132,6 +1173,7 @@ namespace osmscout {
   std::list<std::string> Importer::GetProvidedReportFiles() const
   {
     std::list<std::string> providedFiles={ImportErrorReporter::FILENAME_INDEX_HTML,
+                                          ImportErrorReporter::FILENAME_TAG_HTML,
                                           ImportErrorReporter::FILENAME_WAY_HTML,
                                           ImportErrorReporter::FILENAME_RELATION_HTML,
                                           ImportErrorReporter::FILENAME_LOCATION_HTML};

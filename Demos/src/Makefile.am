@@ -1,6 +1,8 @@
 bin_PROGRAMS = DumpOSS \
                LocationDescription \
                LocationLookup \
+               LocationLookupForm \
+               POILookupForm \
                ReverseLocationLookup \
                PerformanceTest \
                ResourceConsumption \
@@ -18,18 +20,13 @@ endif
 
 if HAVE_LIB_OSMSCOUTMAPQT
 bin_PROGRAMS += DrawMapQt \
-                ResourceConsumptionQt
+                ResourceConsumptionQt \
+                RoutingAnimation
 endif
 
 if HAVE_LIB_OSMSCOUTMAPAGG
 bin_PROGRAMS += DrawMapAgg \
                 Tiler
-endif
-
-if HAVE_LIB_OSMSCOUTMAPOPENGL
-if HAVE_LIB_GLUT
-bin_PROGRAMS += DrawMapOpenGL
-endif
 endif
 
 if OSMSCOUT_HAVE_LIB_MARISA
@@ -45,6 +42,14 @@ DumpOSS_LDADD = $(LIBOSMSCOUTMAP_LIBS) \
 LocationLookup_SOURCES = LocationLookup.cpp
 LocationLookup_CXXFLAGS = $(LIBOSMSCOUT_CFLAGS)
 LocationLookup_LDADD = $(LIBOSMSCOUT_LIBS)
+
+LocationLookupForm_SOURCES = LocationLookupForm.cpp
+LocationLookupForm_CXXFLAGS = $(LIBOSMSCOUT_CFLAGS)
+LocationLookupForm_LDADD = $(LIBOSMSCOUT_LIBS)
+
+POILookupForm_SOURCES = POILookupForm.cpp
+POILookupForm_CXXFLAGS = $(LIBOSMSCOUT_CFLAGS)
+POILookupForm_LDADD = $(LIBOSMSCOUT_LIBS)
 
 LocationDescription_SOURCES = LocationDescription.cpp
 LocationDescription_CXXFLAGS = $(LIBOSMSCOUT_CFLAGS)
@@ -78,17 +83,6 @@ DrawMapQt_CXXFLAGS = -fPIC \
 DrawMapQt_LDADD = $(LIBOSMSCOUTMAPQT_LIBS) \
                   $(LIBOSMSCOUTMAP_LIBS) \
                   $(LIBOSMSCOUT_LIBS)
-
-DrawMapOpenGL_SOURCES = DrawMapOpenGL.cpp
-DrawMapOpenGL_CXXFLAGS = $(LIBOSMSCOUTMAPOPENGL_CFLAGS) \
-                         $(LIBOSMSCOUTMAP_CFLAGS) \
-                         $(LIBOSMSCOUT_CFLAGS) \
-                         $(GLUT_CFLAGS)
-DrawMapOpenGL_LDADD = $(LIBOSMSCOUTMAPOPENGL_LIBS) \
-                      $(LIBOSMSCOUTMAP_LIBS) \
-                      $(LIBOSMSCOUT_LIBS) \
-                      $(GLUT_LIBS)
-
 
 DrawMapSVG_SOURCES = DrawMapSVG.cpp
 DrawMapSVG_CXXFLAGS = $(LIBOSMSCOUTMAPSVG_CFLAGS) \
@@ -127,6 +121,15 @@ ResourceConsumptionQt_CXXFLAGS = -fPIC \
 ResourceConsumptionQt_LDADD = $(LIBOSMSCOUTMAPQT_LIBS) \
                               $(LIBOSMSCOUTMAP_LIBS) \
                               $(LIBOSMSCOUT_LIBS)
+
+RoutingAnimation_SOURCES = RoutingAnimation.cpp
+RoutingAnimation_CXXFLAGS = -fPIC \
+                            $(LIBOSMSCOUTMAPQT_CFLAGS) \
+                            $(LIBOSMSCOUTMAP_CFLAGS) \
+                            $(LIBOSMSCOUT_CFLAGS)
+RoutingAnimation_LDADD = $(LIBOSMSCOUTMAPQT_LIBS) \
+                         $(LIBOSMSCOUTMAP_LIBS) \
+                         $(LIBOSMSCOUT_LIBS)
 
 Routing_SOURCES = Routing.cpp
 Routing_CXXFLAGS = $(LIBOSMSCOUT_CFLAGS)

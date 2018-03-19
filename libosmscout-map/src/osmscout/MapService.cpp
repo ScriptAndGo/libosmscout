@@ -128,6 +128,13 @@ namespace osmscout {
     return cache.GetSize();
   }
 
+  size_t MapService::GetCurrentCacheSize() const
+  {
+    std::lock_guard<std::mutex> lock(stateMutex);
+
+    return cache.GetCurrentSize();
+  }
+
   /**
    * Evict tiles from cache until tile count <= cacheSize
    */
@@ -311,10 +318,14 @@ namespace osmscout {
     OptimizeAreasLowZoomRef optimizeAreasLowZoom=database->GetOptimizeAreasLowZoom();
 
     if (!optimizeAreasLowZoom) {
+      tile->GetOptimizedAreaData().SetComplete();
+      NotifyTileStateCallbacks(tile);
       return false;
     }
 
     if (!optimizeAreasLowZoom->HasOptimizations(magnification.GetMagnification())) {
+      tile->GetOptimizedAreaData().SetComplete();
+      NotifyTileStateCallbacks(tile);
       return true;
     }
 
@@ -461,10 +472,14 @@ namespace osmscout {
     OptimizeWaysLowZoomRef optimizeWaysLowZoom=database->GetOptimizeWaysLowZoom();
 
     if (!optimizeWaysLowZoom) {
+      tile->GetOptimizedWayData().SetComplete();
+      NotifyTileStateCallbacks(tile);
       return false;
     }
 
     if (!optimizeWaysLowZoom->HasOptimizations(magnification.GetMagnification())) {
+      tile->GetOptimizedWayData().SetComplete();
+      NotifyTileStateCallbacks(tile);
       return true;
     }
 

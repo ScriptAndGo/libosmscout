@@ -27,27 +27,26 @@
 #include <QMutex>
 #include <QTime>
 #include <QTimer>
+#include <QReadWriteLock>
 
 #include <osmscout/LocationEntry.h>
+#include <osmscout/BasemapDatabase.h>
 #include <osmscout/Database.h>
 #include <osmscout/LocationService.h>
 #include <osmscout/MapService.h>
-#include <osmscout/RoutingService.h>
-#include <osmscout/RoutePostprocessor.h>
-
 #include <osmscout/MapPainterQt.h>
-
-#include <osmscout/util/Breaker.h>
 
 #include <osmscout/Settings.h>
 #include <osmscout/TileCache.h>
 #include <osmscout/OsmTileDownloader.h>
 #include <osmscout/MapManager.h>
+#include <osmscout/DBInstance.h>
+#include <osmscout/DBJob.h>
 
 /**
  * \ingroup QtAPI
  */
-struct RenderMapRequest
+struct MapViewStruct
 {
   osmscout::GeoCoord      coord;
   double                  angle;
@@ -56,9 +55,9 @@ struct RenderMapRequest
   size_t                  height;
 };
 
-Q_DECLARE_METATYPE(RenderMapRequest)
+Q_DECLARE_METATYPE(MapViewStruct)
 
-inline bool operator!=(const RenderMapRequest &r1, const RenderMapRequest &r2)
+inline bool operator!=(const MapViewStruct &r1, const MapViewStruct &r2)
 {
     return r1.coord!=r2.coord ||
       r1.angle!=r2.angle ||
@@ -79,113 +78,8 @@ Q_DECLARE_METATYPE(DatabaseLoadedResponse)
 
 /**
  * \ingroup QtAPI
+ * \see DBThread::databaseCoverage
  */
-class OSMSCOUT_CLIENT_QT_API QBreaker : public osmscout::Breaker
-{
-private:
-  mutable QMutex mutex;
-  bool           aborted;
-
-public:
-  QBreaker();
-
-  void Break();
-  bool IsAborted() const;
-  void Reset();
-};
-
-/**
- * \ingroup QtAPI
- */
-class OSMSCOUT_CLIENT_QT_API StyleError
-{
-    enum StyleErrorType {
-        Symbol, Error, Warning, Exception
-    };
-
-public:
-    StyleError(StyleErrorType type, int line, int column, const QString &text) :
-        type(type), line(line), column(column), text(text){}
-    StyleError(QString msg);
-
-    StyleErrorType GetType(){ return type; }
-    QString GetTypeName() const;
-    int GetLine(){ return line; }
-    int GetColumn(){ return column; }
-    const QString &GetText(){ return text; }
-    QString GetDescription(){return GetTypeName()+": "+GetText();}
-
-private:
-    StyleErrorType  type;
-    int             line;
-    int             column;
-    QString         text;
-};
-
-/**
- * \ingroup QtAPI
- * 
- * Instance of one osmscout database and database specific objects.
- */
-class DBInstance : public QObject
-{
-  Q_OBJECT
-
-public:
-  QString                       path;
-  osmscout::DatabaseRef         database;
-  
-  osmscout::LocationServiceRef  locationService;
-  osmscout::MapServiceRef       mapService;
-  osmscout::MapService::CallbackId callbackId;
-  osmscout::BreakerRef          dataLoadingBreaker;  
-  
-  osmscout::RoutingServiceRef   router;
-
-  osmscout::StyleConfigRef      styleConfig;
-  osmscout::MapPainterQt        *painter;
-  
-  inline DBInstance(QString path,
-                    osmscout::DatabaseRef database,
-                    osmscout::LocationServiceRef locationService,
-                    osmscout::MapServiceRef mapService,
-                    osmscout::MapService::CallbackId callbackId,
-                    osmscout::BreakerRef dataLoadingBreaker,
-                    osmscout::StyleConfigRef styleConfig):
-    path(path),
-    database(database),
-    locationService(locationService),
-    mapService(mapService),
-    callbackId(callbackId),
-    dataLoadingBreaker(dataLoadingBreaker),
-    styleConfig(styleConfig),
-    painter(NULL)
-  {
-    if (styleConfig){
-      painter = new osmscout::MapPainterQt(styleConfig);
-    }   
-  };
-  
-  inline ~DBInstance()
-  {
-    close();
-    if (painter!=NULL) {
-      delete painter;
-    }
-  };
-
-  bool LoadStyle(QString stylesheetFilename,
-                 std::unordered_map<std::string,bool> stylesheetFlags, 
-                 QList<StyleError> &errors);
-  
-  bool AssureRouter(osmscout::Vehicle vehicle, 
-                    osmscout::RouterParameter routerParameter);  
-
-  void close();
-};
-
-typedef std::shared_ptr<DBInstance> DBInstanceRef;
-
 enum DatabaseCoverage{
   Outside = 0,
   Covered = 1,
@@ -194,228 +88,107 @@ enum DatabaseCoverage{
 
 /**
  * \ingroup QtAPI
- * 
- * Abstract object that manage osmscout database intances (\ref DBInstance) 
- * and provides simple thread-safe, asynchronous api for it. 
- * It don't provide map rendering, it is implented in its sublasses (\ref TiledDBThread 
- * and \ref PlaneDBThread).
- * 
- * DBThread is singleton, it should be initialized at application start by calling 
- * static function DBThread::InitializeTiledInstance or DBThread::InitializePlaneInstance 
- * (it depends what map redering implementation do you want to use). 
- * 
- * After initialization, it should be moved to some non gui thread, to be sure that 
- * database operations will not block UI.
- * 
- * ```
- * QThread thread;
- * DBThread* dbThread=DBThread::GetInstance();
- * 
- * dbThread->connect(&thread, SIGNAL(started()), SLOT(Initialize()));
- * dbThread->connect(&thread, SIGNAL(finished()), SLOT(Finalize()));
- * 
- * dbThread->moveToThread(&thread);
- * ```
- * 
- * Before application exits, resources should be released by calling static function DBThread::FreeInstance.
+ *
+ * Central object that manage database instances (\ref DBInstance),
+ * its map styles (there is one global map style now)
+ * and provides simple thread-safe, asynchronous api for accessing it.
+ *
+ * DBThread is de facto singleton, that is created and accessible by OSMScoutQt.
+ *
+ * List of databases is protected by read-write lock. There may be multiple
+ * readers at one time. DBThread warrants that none database will be closed
+ * or modified (except thread-safe caches) when read lock is hodl.
+ * Databases may be accessed via \see RunJob or \see RunSynchronousJob methods.
  */
 class OSMSCOUT_CLIENT_QT_API DBThread : public QObject
 {
+  friend class OSMScoutQt; // accessing to protected constructor
+
   Q_OBJECT
   Q_PROPERTY(QString stylesheetFilename READ GetStylesheetFilename NOTIFY stylesheetFilenameChanged)
-  
+
+public:
+  typedef std::function<void(const std::list<DBInstanceRef>&)> SynchronousDBJob;
+
 signals:
-  void InitialisationFinished(const DatabaseLoadedResponse& response);
+  void initialisationFinished(const DatabaseLoadedResponse& response);
   void TriggerInitialRendering();
-  void TriggerDrawMap();
-  void Redraw();
-  void locationDescription(const osmscout::GeoCoord location, 
-                           const QString database,
-                           const osmscout::LocationDescription description,
-                           const QStringList regions);
-  void locationDescriptionFinished(const osmscout::GeoCoord location);
   void stylesheetFilenameChanged();
   void databaseLoadFinished(osmscout::GeoBox boundingBox);
   void styleErrorsChanged();
 
-  void searchResult(const QString searchPattern, const QList<LocationEntry>);
-
-  void searchFinished(const QString searchPattern, bool error);
-
-  void viewObjectsLoaded(const RenderMapRequest&, const osmscout::MapData&);
-
 public slots:
   void ToggleDaylight();
+  void onMapDPIChange(double dpi);
   void SetStyleFlag(const QString &key, bool value);
   void ReloadStyle(const QString &suffix="");
   void LoadStyle(QString stylesheetFilename,
                  std::unordered_map<std::string,bool> stylesheetFlags,
                  const QString &suffix="");
-  virtual void Initialize() = 0;
-  virtual void InvalidateVisualCache() = 0;
+  void Initialize();
   void onDatabaseListChanged(QList<QDir> databaseDirectories);
-  void Finalize();
-
-  /**
-   * Start retrieving place informations based on objects on or near the location.
-   * 
-   * DBThread then emits locationDescription signals followed by locationDescriptionFinished.
-   * 
-   * User of this function should use Qt::QueuedConnection for invoking
-   * this slot, operation may generate IO load and may tooks long time.
-   * 
-   * @param location
-   */
-  void requestLocationDescription(const osmscout::GeoCoord location);
-
-  virtual void onMapDPIChange(double dpi);
-  virtual void onRenderSeaChanged(bool);
-  virtual void onFontNameChanged(const QString);
-  virtual void onFontSizeChanged(double);
-
-  /**
-   * Start object search by some pattern. 
-   * 
-   * DBThread then emits searchResult signals followed by searchFinished 
-   * for this pattern.
-   * 
-   * User of this function should use Qt::QueuedConnection for invoking
-   * this slot, search may generate IO load and may tooks long time.
-   * 
-   * Keep in mind that entries retrieved by searchResult signal can contains 
-   * duplicates, because search may use various databases and indexes. 
-   * 
-   * @param searchPattern
-   * @param limit - suggested limit for count of retrieved entries from one database
-   */
-  void SearchForLocations(const QString searchPattern, int limit);
-
-  void requestObjectsOnView(const RenderMapRequest&);
 
 protected:
-  MapManagerRef                 mapManager;
-  SettingsRef                   settings;
+  QThread                            *backgroundThread;
+  MapManagerRef                      mapManager;
+  QString                            basemapLookupDirectory;
+  SettingsRef                        settings;
 
-  double                        mapDpi;
-  double                        physicalDpi;
+  double                             mapDpi;
+  double                             physicalDpi;
 
-  mutable QMutex                mutex;
-  
-  osmscout::DatabaseParameter   databaseParameter;
-  QList<DBInstanceRef>          databases;
-  osmscout::RouterParameter     routerParameter;
-  osmscout::RoutePostprocessor  routePostprocessor;
+  mutable QReadWriteLock             lock;
 
-  QString                       stylesheetFilename;
-  QString                       iconDirectory;
+  osmscout::BasemapDatabaseParameter basemapDatabaseParameter;
+  osmscout::BasemapDatabaseRef       basemapDatabase;
+  osmscout::DatabaseParameter        databaseParameter;
+  std::list<DBInstanceRef>           databases;
+
+  QString                            stylesheetFilename;
+  QString                            iconDirectory;
   std::unordered_map<std::string,bool>
-                                stylesheetFlags;
-  bool                          daylight;
-  
-  bool                          renderSea;
+                                     stylesheetFlags;
+  bool                               daylight;
 
-  bool                          renderError;
-  QList<StyleError>             styleErrors;
+  bool                               renderError;
+  QList<StyleError>                  styleErrors;
 
-  QString                       fontName;
-  double                        fontSize;
+  std::vector<std::string>           customPoiTypes;
 
 protected:
-  
-  DBThread(QStringList databaseLookupDirectories,
-           QString iconDirectory,
-           SettingsRef settings);
-
-  virtual ~DBThread();
-
-  bool AssureRouter(osmscout::Vehicle vehicle);
-
-  virtual void TileStateCallback(const osmscout::TileRef& changedTile);
- 
-  static QStringList BuildAdminRegionList(const osmscout::LocationServiceRef& locationService,
-                                          const osmscout::AdminRegionRef& adminRegion,
-                                          std::map<osmscout::FileOffset,osmscout::AdminRegionRef> regionMap);
-  
-  bool BuildLocationEntry(const osmscout::ObjectFileRef& object,
-                          const QString title,
-                          DBInstanceRef db,
-                          std::map<osmscout::FileOffset,osmscout::AdminRegionRef> &adminRegionMap,
-                          QList<LocationEntry> &locations
-                          );
-  bool BuildLocationEntry(const osmscout::LocationSearchResult::Entry &entry,
-                          DBInstanceRef db,
-                          std::map<osmscout::FileOffset,osmscout::AdminRegionRef> &adminRegionMap,
-                          QList<LocationEntry> &locations
-                          );
-
-  bool GetObjectDetails(DBInstanceRef db, const osmscout::ObjectFileRef& object,
-                        QString &typeName, 
-                        osmscout::GeoCoord& coordinates,
-                        osmscout::GeoBox& bbox);
-
-  bool InitializeDatabases();
 
   void CancelCurrentDataLoading();
 
   bool isInitializedInternal();
 
 public:
-  bool isInitialized(); 
-  
+  DBThread(QThread *backgroundThread,
+           QString basemapLookupDirectory,
+           QString iconDirectory,
+           SettingsRef settings,
+           MapManagerRef mapManager,
+           const std::vector<std::string> &customPoiTypes);
+
+  virtual ~DBThread();
+
+  bool isInitialized();
+
   const DatabaseLoadedResponse loadedResponse() const;
 
+  /**
+   * Test if some bounding box is covered by databases - fully, partially or not covered.
+   * Database bounding box combined with water-index is used.
+   *
+   * @param magnification
+   * @param bbox
+   * @return DatabaseCoverage enum: Outside, Covered, Intersects
+   */
   DatabaseCoverage databaseCoverage(const osmscout::Magnification &magnification,
                                     const osmscout::GeoBox &bbox);
 
   double GetMapDpi() const;
-  
+
   double GetPhysicalDpi() const;
-  
-  /**
-   * Render map defined by request to painter 
-   * @param painter
-   * @param request
-   * @return true if rendered map is complete 
-   */
-  virtual bool RenderMap(QPainter& painter,
-                         const RenderMapRequest& request) = 0;
-  
-  bool CalculateRoute(const QString databasePath,
-                      const osmscout::RoutingProfile& routingProfile,
-                      const osmscout::RoutePosition& start,
-                      const osmscout::RoutePosition target,
-                      osmscout::RouteData& route);
-
-  bool TransformRouteDataToRouteDescription(const QString databasePath,
-                                            const osmscout::RoutingProfile& routingProfile,
-                                            const osmscout::RouteData& data,
-                                            osmscout::RouteDescription& description,
-                                            const std::string& start,
-                                            const std::string& target);
-
-  bool TransformRouteDataToWay(const QString databasePath,
-                               osmscout::Vehicle vehicle,
-                               const osmscout::RouteData& data,
-                               osmscout::Way& way);
-
-  osmscout::RoutePosition GetClosestRoutableNode(const QString databasePath,
-                                                 const osmscout::ObjectFileRef& refObject,
-                                                 const osmscout::RoutingProfile& routingProfile,
-                                                 double radius);
-
-  void ClearRoute();
-  void AddRoute(const osmscout::Way& way);
-  osmscout::TypeConfigRef GetTypeConfig(const QString databasePath) const;
-  
-  inline MapManagerRef GetMapManager() const
-  {
-    return mapManager;
-  }
-
-  inline SettingsRef GetSettings() const
-  {
-    return settings;
-  }
 
   inline QString GetStylesheetFilename() const
   {
@@ -429,22 +202,38 @@ public:
 
   const QMap<QString,bool> GetStyleFlags() const;
 
-  static QStringList BuildAdminRegionList(const osmscout::AdminRegionRef& adminRegion,
-                                          std::map<osmscout::FileOffset,osmscout::AdminRegionRef> regionMap);
-  
-  static bool InitializeTiledInstance(QStringList databaseDirectory, 
-                                      QString iconDirectory,
-                                      SettingsRef settings,
-                                      QString tileCacheDirectory,
-                                      size_t onlineTileCacheSize = 20, 
-                                      size_t offlineTileCacheSize = 50);
+  /**
+   * Submit asynchronous job that will retrieve list
+   * of initialized databases and pointer to \ref QReadLocker.
+   * Job is responsible for releasing lock when its task
+   * is finished.
+   *
+   * @param job
+   */
+  void RunJob(DBJob *job);
 
-  static bool InitializePlaneInstance(QStringList databaseDirectory, 
-                                      QString iconDirectory,
-                                      SettingsRef settings);
-  
-  static DBThread* GetInstance();
-  static void FreeInstance();
+  /**
+   * Submit synchronous job (simple lambda function)
+   * that will get access to list of initialized databases.
+   * Database read lock is hold until job is running.
+   * Lock is released automatically then. Database instances
+   * should not be accessed after it.
+   *
+   * Example:
+   * ```
+   * dbThread->RunSynchronousJob(
+   *   [&](const std::list<DBInstanceRef> &databases){
+   *     // read data from databases...
+   *   }
+   * );
+   * ```
+   *
+   * @param job
+   */
+  void RunSynchronousJob(SynchronousDBJob job);
+
 };
+
+typedef std::shared_ptr<DBThread> DBThreadRef;
 
 #endif

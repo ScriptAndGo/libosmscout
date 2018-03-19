@@ -1,5 +1,5 @@
 /*
-  AddressLookup - a demo program for libosmscout
+  ReverseLocationLookup - a demo program for libosmscout
   Copyright (C) 2010  Tim Teulings
 
   This program is free software; you can redistribute it and/or modify
@@ -19,11 +19,10 @@
 
 #include <cctype>
 #include <cstring>
+#include <iostream>
 
 #include <osmscout/Database.h>
-#include <osmscout/LocationService.h>
-
-#include <osmscout/util/String.h>
+#include <osmscout/LocationDescriptionService.h>
 
 int main(int argc, char* argv[])
 {
@@ -31,7 +30,7 @@ int main(int argc, char* argv[])
   std::list<osmscout::ObjectFileRef> objects;
 
   if (argc<4 || argc%2!=0) {
-    std::cerr << "AddressLookup <map directory> <ObjectType> <FileOffset>..." << std::endl;
+    std::cerr << "ReverseLocationLookup <map directory> <ObjectType> <FileOffset>..." << std::endl;
     return 1;
   }
 
@@ -41,7 +40,7 @@ int main(int argc, char* argv[])
 
   int argIndex=2;
   while (argIndex<argc) {
-    osmscout::RefType    objectType=osmscout::refNone;
+    osmscout::RefType    objectType;
     osmscout::FileOffset offset=0;
 
     if (strcmp("Node",argv[argIndex])==0) {
@@ -70,30 +69,36 @@ int main(int argc, char* argv[])
 
     argIndex++;
 
-    objects.push_back(osmscout::ObjectFileRef(offset,
-                                              objectType));
+    objects.emplace_back(offset,
+                         objectType);
   }
 
   osmscout::DatabaseParameter databaseParameter;
   osmscout::DatabaseRef       database=std::make_shared<osmscout::Database>(databaseParameter);
 
-  if (!database->Open(map.c_str())) {
+  if (!database->Open(map)) {
     std::cerr << "Cannot open database" << std::endl;
 
     return 1;
   }
 
-  osmscout::LocationServiceRef locationService=std::make_shared<osmscout::LocationService>(database);
+  osmscout::LocationDescriptionServiceRef locationDescriptionService=std::make_shared<osmscout::LocationDescriptionService>(database);
 
-  std::list<osmscout::LocationService::ReverseLookupResult> result;
+  std::list<osmscout::LocationDescriptionService::ReverseLookupResult> result;
 
-  if (locationService->ReverseLookupObjects(objects,
-                                            result)) {
+  if (locationDescriptionService->ReverseLookupObjects(objects,
+                                                       result)) {
     for (const auto& entry : result) {
       std::cout << entry.object.GetTypeName() << " " << entry.object.GetFileOffset() << " matches";
 
       if (entry.adminRegion) {
-        std::cout << " region '" << entry.adminRegion->name << "'";
+        std::cout << " region";
+
+        if (entry.postalArea) {
+          std::cout << " " << entry.postalArea->name;
+        }
+
+        std::cout << " '" << entry.adminRegion->name << "'";
       }
 
       if (entry.poi) {

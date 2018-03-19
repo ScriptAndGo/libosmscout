@@ -46,12 +46,9 @@ namespace osmscout {
     renderUnknowns(false),
     debugData(false),
     debugPerformance(false),
+    warnObjectCountLimit(0),
+    warnCoordCountLimit(0),
     showAltLanguage(false)
-  {
-    // no code
-  }
-
-  MapParameter::~MapParameter()
   {
     // no code
   }
@@ -186,8 +183,35 @@ namespace osmscout {
     debugPerformance=debug;
   }
 
+  void MapParameter::SetWarningObjectCountLimit(size_t limit)
+  {
+    warnObjectCountLimit=limit;
+  }
+
+  void MapParameter::SetWarningCoordCountLimit(size_t limit)
+  {
+    warnCoordCountLimit=limit;
+  }
+
   void MapParameter::SetBreaker(const BreakerRef& breaker)
   {
     this->breaker=breaker;
+  }
+
+  void MapParameter::RegisterFillStyleProcessor(size_t typeIndex,
+                                                const FillStyleProcessorRef& processor)
+  {
+    fillProcessors.resize(std::max(fillProcessors.size(),(size_t)(typeIndex+1)));
+
+    fillProcessors[typeIndex]=processor;
+  }
+
+  FillStyleProcessorRef MapParameter::GetFillStyleProcessor(size_t typeIndex) const
+  {
+    if (typeIndex<fillProcessors.size()) {
+      return fillProcessors[typeIndex];
+    }
+
+    return nullptr;
   }
 }

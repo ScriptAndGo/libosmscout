@@ -27,6 +27,8 @@
 
 #include <osmscout/Types.h>
 
+#include <osmscout/system/Compiler.h>
+
 namespace osmscout {
 
   /**
@@ -45,11 +47,11 @@ namespace osmscout {
    * continuous memory areas) and at the same time fast access
    * (O(1)) for reading and writing.
    */
-  class OSMSCOUT_API NodeUseMap
+  class OSMSCOUT_API NodeUseMap CLASS_FINAL
   {
   private:
     typedef std::bitset<4096>                 Bitset;
-    typedef std::unordered_map<PageId,Bitset> Map;
+    typedef std::unordered_map<size_t,Bitset> Map;
 
   private:
     Map                                       nodeUseMap;
@@ -58,7 +60,6 @@ namespace osmscout {
 
   public:
     NodeUseMap();
-    virtual ~NodeUseMap();
 
     void SetNodeUsed(Id id);
     bool IsNodeUsedAtLeastTwice(Id id) const;

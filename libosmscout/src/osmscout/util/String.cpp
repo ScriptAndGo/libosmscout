@@ -21,20 +21,54 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <cwchar>
 #include <iomanip>
 #include <locale>
 #include <sstream>
+#include <array>
+#include <ctime>
 
 #include <osmscout/system/Math.h>
+
+#include <osmscout/util/Logger.h>
 
 #include <osmscout/private/Config.h>
 
 #if defined(HAVE_CODECVT)
 #include <codecvt>
 #endif
-#include <iostream>
+
+#if defined(HAVE_ICONV)
+#include <iconv.h>
+#endif
+
 namespace osmscout {
 
+  bool StringToBool(const char* string, bool& value)
+  {
+    if (std::strcmp(string,"true")==0) {
+      value=true;
+
+      return true;
+    }
+    else if (std::strcmp(string,"false")==0) {
+      value=false;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  const char* BoolToString(bool value)
+  {
+    if (value) {
+      return "true";
+    }
+
+    return "false";
+  }
 
   bool GetDigitValue(char digit, size_t& result)
   {
@@ -120,24 +154,35 @@ namespace osmscout {
     return stream.eof();
   }
 
-  std::string StringListToString(const std::list<std::string>& list,
-                                 const std::string& separator)
+  size_t CountWords(const std::string& text)
   {
-    std::string result;
+    size_t wordCount=0;
+    bool   inWord=false;
+    size_t nextPos=0;
 
-    for (std::list<std::string>::const_iterator element=list.begin();
-        element!=list.end();
-        ++element) {
-      if (element==list.begin()) {
-       result.append(*element);
-      }
-      else {
-        result.append(separator);
-        result.append(*element);
-      }
+    // Leading space
+    while (nextPos<text.length() && std::isspace(text[nextPos])!=0) {
+      nextPos++;
     }
 
-    return result;
+    // We are counting the number of transitions from inWord=false to inWord=true
+    while (nextPos<text.length()) {
+      if (inWord) {
+        if (std::isspace(text[nextPos])!=0) {
+          inWord=false;
+        }
+      }
+      else {
+        if (std::isspace(text[nextPos])==0) {
+          inWord=true;
+          wordCount++;
+        }
+      }
+
+      nextPos++;
+    }
+
+    return wordCount;
   }
 
   std::string ByteSizeToString(FileOffset value)
@@ -175,35 +220,43 @@ namespace osmscout {
     return buffer.str();
   }
 
-  void SplitStringAtSpace(const std::string& input,
-                          std::list<std::string>& tokens)
+  std::list<std::string> SplitStringAtSpace(const std::string& input)
   {
+    std::list<std::string> tokens;
     std::string::size_type wordBegin=0;
     std::string::size_type wordEnd=0;
 
+    // While not at end of string
     while (wordBegin<input.length()) {
+      // skip all whitespace characters
       while (wordBegin<input.length() &&
-             std::isspace(input[wordBegin])) {
+             std::isspace(input[wordBegin])!=0) {
         wordBegin++;
       }
 
+      // if we at the end => finish, else we have found the next word
       if (wordBegin>=input.length()) {
-        return;
+        return tokens;
       }
 
       wordEnd=wordBegin;
 
+      // Collect characters until whitespace or end of string
       while (wordEnd+1<input.length() &&
-             !std::isspace((unsigned char)input[wordEnd + 1])) {
+             std::isspace((unsigned char)input[wordEnd + 1])==0) {
         wordEnd++;
       }
 
+      // Copy token
       std::string token=input.substr(wordBegin,wordEnd-wordBegin+1);
 
       tokens.push_back(token);
 
+      // next iteration
       wordBegin=wordEnd+1;
     }
+
+    return tokens;
   }
 
   std::string GetFirstInStringList(const std::string& stringList,
@@ -217,9 +270,8 @@ namespace osmscout {
     if (pos==std::string::npos) {
       return stringList;
     }
-    else {
-      return stringList.substr(0,pos);
-    }
+
+    return stringList.substr(0,pos);
   }
 
   void TokenizeString(const std::string& input,
@@ -230,7 +282,7 @@ namespace osmscout {
 
     while (wordBegin<input.length()) {
       while (wordBegin<input.length() &&
-             (std::isspace(input[wordBegin]) ||
+             (std::isspace(input[wordBegin])!=0 ||
               input[wordBegin]==',')) {
         wordBegin++;
       }
@@ -242,7 +294,7 @@ namespace osmscout {
       wordEnd=wordBegin;
 
       while (wordEnd+1<input.length() &&
-             (!std::isspace(input[wordEnd+1]) &&
+             (std::isspace(input[wordEnd+1])==0 &&
               input[wordEnd+1]!=',')) {
         wordEnd++;
       }
@@ -257,13 +309,13 @@ namespace osmscout {
 
   void SimplifyTokenList(std::list<std::string>& tokens)
   {
-    std::list<std::string>::iterator current=tokens.begin();
-    std::list<std::string>::iterator next=current;
+    auto current=tokens.begin();
+    auto next=current;
 
     next++;
     while (next!=tokens.end()) {
-      if (std::isupper(current->at(0)) &&
-          std::islower(next->at(0))) {
+      if (std::isupper(current->at(0))!=0 &&
+          std::islower(next->at(0))!=0) {
         current->append(" ");
         current->append(*next);
         next=tokens.erase(next);
@@ -273,6 +325,53 @@ namespace osmscout {
         ++next;
       }
     }
+  }
+
+  std::string GetTokensFromStart(const std::list<std::string>& tokens,
+                                 size_t count)
+  {
+    assert(count<=tokens.size());
+
+    std::string result;
+    auto        startToken=tokens.begin();
+    auto        currentToken=startToken;
+
+    for (size_t i=0; i<count; i++) {
+      if (currentToken!=startToken) {
+        result+=' ';
+      }
+
+      result.append(*currentToken);
+
+      ++currentToken;
+    }
+
+    return result;
+  }
+
+  std::string GetTokensFromEnd(const std::list<std::string>& tokens,
+                               size_t count)
+  {
+    assert(count<=tokens.size());
+
+    std::string result;
+    auto        startToken=tokens.begin();
+
+    std::advance(startToken,tokens.size()-count);
+
+    auto        currentToken=startToken;
+
+    for (size_t i=0; i<count; i++) {
+      if (currentToken!=startToken) {
+        result+=' ';
+      }
+
+      result+=*currentToken;
+
+      ++currentToken;
+    }
+
+    return result;
   }
 
   void GroupStringListToStrings(std::list<std::string>::const_iterator token,
@@ -302,9 +401,9 @@ namespace osmscout {
     }
 
     for (size_t i=1; i<=listSize-parts+1; i++) {
-      size_t                                 count=0;
-      std::string                            value;
-      std::list<std::string>::const_iterator t=token;
+      size_t      count=0;
+      std::string value;
+      auto        t=token;
 
       while (count<i) {
         if (!value.empty()) {
@@ -334,14 +433,212 @@ namespace osmscout {
     }
   }
 
-#if defined(HAVE_CODECVT)
+  std::wstring LocaleStringToWString(const std::string& text)
+  {
+    std::mbstate_t state;
+
+    const char     *in=text.c_str();
+    wchar_t        *out=new wchar_t[text.length()+2];
+    size_t         size;
+    std::wstring   result;
+
+    memset(&state,0,sizeof(state));
+
+    size=std::mbsrtowcs(out,&in,text.length()+2,&state);
+    if (size!=(size_t)-1 && in==nullptr) {
+      result=std::wstring(out,size);
+    }
+
+    delete [] out;
+
+    return result;
+  }
+
+  std::string WStringToLocaleString(const std::wstring& text)
+  {
+    std::mbstate_t state;
+
+    const wchar_t  *in=text.c_str();
+    char           *out=new char[text.length()*4+1];
+    size_t         size;
+    std::string    result;
+
+    memset(&state,0,sizeof(state));
+
+    size=std::wcsrtombs(out,&in,text.length()*4+1,&state);
+    if (size!=(size_t)-1 && in==nullptr) {
+      result=std::string(out,size);
+    }
+
+    delete [] out;
+
+    return result;
+  }
+
+#if defined(HAVE_ICONV)
+  std::wstring UTF8StringToWString(const std::string& text)
+  {
+    std::wstring res;
+    iconv_t      handle;
+
+    handle=iconv_open("WCHAR_T","UTF-8");
+    if (handle==(iconv_t)-1) {
+      log.Error() << "Error in UTF8StringToWString()" << strerror(errno);
+      return L"";
+    }
+
+    // length+1+1 to handle a potential BOM if ICONV_WCHAR_T is UTF-16 and to convert of \0
+    size_t inCount=text.length()+1;
+    size_t outCount=(text.length()+2)*sizeof(wchar_t);
+
+    char    *in=const_cast<char*>(text.data());
+    wchar_t *out=new wchar_t[text.length()+2];
+
+    char *tmpOut=(char*)out;
+    size_t tmpOutCount=outCount;
+    if (iconv(handle,(ICONV_CONST char**)&in,&inCount,&tmpOut,&tmpOutCount)==(size_t)-1) {
+      iconv_close(handle);
+      delete [] out;
+      log.Error() << "Error in UTF8StringToWString()" << strerror(errno);
+      return L"";
+    }
+
+    iconv_close(handle);
+
+    // remove potential byte order marks
+    if (sizeof(wchar_t)==4) {
+      // strip off potential BOM if ICONV_WCHAR_T is UTF-32
+      if (out[0]==0xfeff) {
+        res=std::wstring(out+1,(outCount-tmpOutCount)/sizeof(wchar_t)-2);
+      }
+      else {
+        res=std::wstring(out,(outCount-tmpOutCount)/sizeof(wchar_t)-1);
+      }
+    }
+    else if (sizeof(wchar_t)==2) {
+      // strip off potential BOM if ICONV_WCHAR_T is UTF-16
+      if (out[0]==0xfeff || out[0]==0xfffe) {
+        res=std::wstring(out+1,(outCount-tmpOutCount)/sizeof(wchar_t)-2);
+      }
+      else {
+        res=std::wstring(out,(outCount-tmpOutCount)/sizeof(wchar_t)-1);
+      }
+    }
+    else {
+      res=std::wstring(out,(outCount-tmpOutCount)/sizeof(wchar_t)-1);
+    }
+
+    delete [] out;
+
+    return res;
+  }
+#elif defined(HAVE_CODECVT)
   std::wstring UTF8StringToWString(const std::string& text)
   {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
 
     return conv.from_bytes(text);
   }
+#else
+  #error "Missing implementation for std::wstring UTF8StringToWString(const std::string& text)"
+#endif
 
+#if defined(HAVE_ICONV)
+  std::u32string UTF8StringToU32String(const std::string& text)
+  {
+    std::u32string res;
+    iconv_t        handle;
+
+    handle=iconv_open("UTF-32","UTF-8");
+    if (handle==(iconv_t)-1) {
+      log.Error() << "Error returned by iconv_open() in UTF8StringToU32String(): " << strerror(errno);
+      return std::u32string();
+    }
+
+    // length+1+1 to handle a potential BOM and to convert of \0
+    size_t inCount=text.length()+1;
+    size_t outCount=(text.length()+2)*sizeof(char32_t);
+
+    char     *in=const_cast<char*>(text.data());
+    char32_t *out=new char32_t[text.length()+2];
+
+    char *tmpOut=(char*)out;
+    size_t tmpOutCount=outCount;
+    if (iconv(handle,(ICONV_CONST char**)&in,&inCount,&tmpOut,&tmpOutCount)==(size_t)-1) {
+      iconv_close(handle);
+      delete [] out;
+      log.Error() << "Error returned by iconv() in UTF8StringToU32String():" << strerror(errno);
+      return std::u32string();
+    }
+
+    iconv_close(handle);
+
+    // remove potential byte order marks
+    if (out[0]==0xfeff) {
+      res=std::u32string(out+1,(outCount-tmpOutCount)/sizeof(char32_t)-2);
+    }
+    else {
+      res=std::u32string(out,(outCount-tmpOutCount)/sizeof(char32_t)-1);
+    }
+
+    delete [] out;
+
+    return res;
+  }
+#elif defined(HAVE_CODECVT)
+  std::u32string UTF8StringToU32String(const std::string& text)
+  {
+#if defined(_MSC_VER) && _MSC_VER >= 1900
+    // See https://stackoverflow.com/questions/30765256/linker-error-using-vs-2015-rc-cant-find-symbol-related-to-stdcodecvt
+    std::wstring_convert<std::codecvt_utf8<int32_t>, int32_t> conv;
+    return reinterpret_cast<const char32_t*>(conv.from_bytes(text).c_str());
+#else
+    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> conv;
+    return conv.from_bytes(text);
+#endif
+
+  }
+#else
+  #error "Missing implementation for std::wstring UTF8StringToU32String(const std::string& text)"
+#endif
+
+#if defined(HAVE_ICONV)
+  std::string WStringToUTF8String(const std::wstring& text)
+  {
+    iconv_t handle;
+
+    handle=iconv_open("UTF-8","WCHAR_T");
+    if (handle==(iconv_t)-1) {
+      log.Error() << "Error iconv_open in WStringToUTF8String(): " << strerror(errno);
+      return "";
+    }
+
+    // length+1 to get the result '\0'-terminated
+    size_t inCount=(text.length()+1)*sizeof(wchar_t);
+    size_t outCount=text.length()*4+1; // Up to 4 bytes for one UTF-8 character
+
+    char *in=const_cast<char*>((const char*)text.c_str());
+    char *out=new char[outCount];
+
+    char   *tmpOut=out;
+    size_t tmpOutCount=outCount;
+
+    if (iconv(handle,(ICONV_CONST char**)&in,&inCount,&tmpOut,&tmpOutCount)==(size_t)-1) {
+      iconv_close(handle);
+      delete [] out;
+      log.Error() << "Error iconv in WStringToUTF8String() " << strerror(errno);
+      return "";
+    }
+
+    std::string res=out;
+
+    delete [] out;
+
+    iconv_close(handle);
+
+    return res;
+  }
+#elif defined(HAVE_CODECVT)
   std::string WStringToUTF8String(const std::wstring& text)
   {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
@@ -349,293 +646,92 @@ namespace osmscout {
     return conv.to_bytes(text);
   }
 #else
-  /**
-    The following string conversion code is a modified version of code copied
-    from the source of the ConvertUTF tool, as can be found for example at
-    http://www.unicode.org/Public/PROGRAMS/CVTUTF/
-
-    It is free to copy and use.
-  */
-
-  #define UNI_SUR_HIGH_START  0xD800
-  #define UNI_SUR_HIGH_END    0xDBFF
-  #define UNI_SUR_LOW_START   0xDC00
-  #define UNI_SUR_LOW_END     0xDFFF
-  #define UNI_MAX_BMP         0x0000FFFF
-  #define UNI_MAX_UTF16       0x0010FFFF
-  #define UNI_MAX_LEGAL_UTF32 0x0010FFFF
-
-  static const unsigned long offsetsFromUTF8[6] = {
-    0x00000000UL, 0x00003080UL, 0x000E2080UL,
-    0x03C82080UL, 0xFA082080UL, 0x82082080UL
-  };
-
-  static const unsigned char firstByteMark[7] = { 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC };
-
-  static const char trailingBytesForUTF8[256] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,4,4,4,4,5,5,5,5
-  };
-
-  std::string WStringToUTF8String(const std::wstring& text)
-  {
-    std::string         result;
-    char                buffer[4];
-    const unsigned long byteMask=0xBF;
-    const unsigned long byteMark=0x80;
-
-    result.reserve(text.length()*4);
-
-#if SIZEOF_WCHAR_T==4
-
-    for (size_t i=0; i<text.length(); i++) {
-      wchar_t             ch=text[i];
-      unsigned short      bytesToWrite = 0;
-
-      /* UTF-16 surrogate values are illegal in UTF-32 */
-      if (ch>=UNI_SUR_HIGH_START && ch<=UNI_SUR_LOW_END) {
-        return result;
-      }
-
-      /*
-       * Figure out how many bytes the result will require. Turn any
-       * illegally large UTF32 things (> Plane 17) into replacement chars.
-      */
-      if (ch<0x80) {
-        bytesToWrite=1;
-      }
-      else if (ch<0x800) {
-        bytesToWrite=2;
-      }
-      else if (ch<0x10000) {
-        bytesToWrite=3;
-      }
-      else if (ch<=UNI_MAX_LEGAL_UTF32) {
-        bytesToWrite=4;
-      }
-      else {
-        return result;
-      }
-
-      switch (bytesToWrite) { /* note: everything falls through. */
-      case 4:
-        buffer[3]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 3:
-        buffer[2]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 2:
-        buffer[1]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 1:
-        buffer[0]=(char)(ch | firstByteMark[bytesToWrite]);
-      }
-
-      result.append(buffer,bytesToWrite);
-    }
-
-#elif SIZEOF_WCHAR_T==2
-
-    static const int halfShift=10; /* used for shifting by 10 bits */
-    static const unsigned long halfBase=0x0010000UL;
-
-    const wchar_t* source=text.c_str();
-
-    while (source!=text.c_str()+text.length()) {
-      wchar_t             ch;
-      unsigned short      bytesToWrite=0;
-
-      ch=*source++;
-
-      /* If we have a surrogate pair, convert to UTF32 first. */
-      if (ch>=UNI_SUR_HIGH_START && ch<=UNI_SUR_HIGH_END) {
-        if (source>=text.c_str()+text.length()) {
-          return result;
-        }
-        /* If the 16 bits following the high surrogate are in the source buffer... */
-        unsigned long ch2 = *source++;
-        /* If it's a low surrogate, convert to UTF32. */
-        if (ch2>=UNI_SUR_LOW_START && ch2<=UNI_SUR_LOW_END) {
-          ch=(wchar_t)(((ch-UNI_SUR_HIGH_START) << halfShift) + (ch2-UNI_SUR_LOW_START) + halfBase);
-        }
-        else { /* it's an unpaired high surrogate */
-          return result;
-        }
-      }
-      else {
-        /* UTF-16 surrogate values are illegal in UTF-32 */
-        if (ch>=UNI_SUR_LOW_START && ch<=UNI_SUR_LOW_END) {
-          return result;
-        }
-      }
-
-      /* Figure out how many bytes the result will require */
-      if (ch<0x80) {
-        bytesToWrite=1;
-      }
-      else if (ch<0x800) {
-        bytesToWrite=2;
-      }
-      else if (ch<0x10000) {
-        bytesToWrite=3;
-      }
-      else if (ch<0x110000) {
-        bytesToWrite=4;
-      }
-      else {
-        return result;
-      }
-
-      switch (bytesToWrite) { /* note: everything falls through. */
-      case 4:
-        buffer[3]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 3:
-        buffer[2]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 2:
-        buffer[1]=(char)((ch | byteMark) & byteMask);
-        ch>>=6;
-      case 1:
-        buffer[0]=(char)(ch | firstByteMark[bytesToWrite]);
-      }
-
-      result.append(buffer,bytesToWrite);
-    }
+  #error "Missing implementation for std::string WStringToUTF8String(const std::wstring& text)"
 #endif
 
-    return result;
+#if defined(HAVE_ICONV)
+  std::string LocaleStringToUTF8String(const std::string& text)
+  {
+    iconv_t handle;
+
+    handle=iconv_open("UTF-8","");
+    if (handle==(iconv_t)-1) {
+      log.Error() << "Error iconv_open in LocaleStringToUTF8String() " << strerror(errno);
+      return "";
+    }
+
+    // length+1 to get the result '\0'-terminated
+    size_t inCount=text.length()+1;
+    size_t outCount=text.length()*4+1; // Up to 4 bytes for one UTF-8 character
+
+    char *in=const_cast<char*>(text.data());
+    char *out=new char[outCount];
+
+    char   *tmpOut=out;
+    size_t tmpOutCount=outCount;
+
+    if (iconv(handle,(ICONV_CONST char**)&in,&inCount,&tmpOut,&tmpOutCount)==(size_t)-1) {
+      iconv_close(handle);
+      delete [] out;
+      log.Error() << "Error iconv in LocaleStringToUTF8String() " << strerror(errno);
+      return "";
+    }
+
+    std::string res=out;
+
+    delete [] out;
+
+    iconv_close(handle);
+
+    return res;
   }
-
-  std::wstring UTF8StringToWString(const std::string& text)
+#else
+  std::string LocaleStringToUTF8String(const std::string& text)
   {
-    std::wstring result;
-
-    result.reserve(text.length());
-
-#if SIZEOF_WCHAR_T==4
-    const char* source=text.c_str();
-
-    while (source!=text.c_str()+text.length()) {
-      unsigned long  ch = 0;
-      unsigned short extraBytesToRead=trailingBytesForUTF8[(unsigned char)*source];
-
-      /*
-       * The cases all fall through. See "Note A" below.
-       */
-      switch (extraBytesToRead) {
-      case 5:
-        ch+=(unsigned char)(*source);
-        source++;
-        ch<<=6;
-      case 4:
-        ch+=(unsigned char)(*source);
-        source++;
-        ch<<=6;
-      case 3:
-        ch+=(unsigned char)(*source);
-        source++;
-        ch<<=6;
-      case 2:
-        ch+=(unsigned char)(*source);
-        source++;
-        ch<<=6;
-      case 1:
-        ch+=(unsigned char)(*source);
-        source++;
-        ch<<=6;
-      case 0:
-        ch+=(unsigned char)(*source);
-        source++;
-      }
-      ch-=offsetsFromUTF8[extraBytesToRead];
-
-      if (ch<=UNI_MAX_LEGAL_UTF32) {
-        /*
-         * UTF-16 surrogate values are illegal in UTF-32, and anything
-         * over Plane 17 (> 0x10FFFF) is illegal.
-         */
-        if (ch>=UNI_SUR_HIGH_START && ch<=UNI_SUR_LOW_END) {
-          return result;
-        }
-        else {
-          result.append(1,(wchar_t)ch);
-        }
-      }
-      else { /* i.e., ch > UNI_MAX_LEGAL_UTF32 */
-        return result;
-      }
-    }
-#elif SIZEOF_WCHAR_T==2
-    static const int halfShift=10; /* used for shifting by 10 bits */
-    static const unsigned long halfBase=0x0010000UL;
-    static const unsigned long halfMask=0x3FFUL;
-
-    size_t idx=0;
-
-    while (idx<text.length()) {
-      unsigned long  ch=0;
-      unsigned short extraBytesToRead=trailingBytesForUTF8[(unsigned char)text[idx]];
-
-      /*
-       * The cases all fall through. See "Note A" below.
-       */
-
-      switch (extraBytesToRead) {
-      case 5:
-        ch+=(unsigned char)text[idx];
-        idx++;
-        ch<<=6; /* remember, illegal UTF-8 */
-      case 4:
-        ch+=(unsigned char)text[idx];
-        idx++;
-        ch<<=6; /* remember, illegal UTF-8 */
-      case 3:
-        ch+=(unsigned char)text[idx];
-        idx++;
-        ch<<=6;
-      case 2:
-        ch+=(unsigned char)text[idx];
-        idx++;
-        ch<<=6;
-      case 1:
-        ch+=(unsigned char)text[idx];
-        idx++;
-        ch<<=6;
-      case 0:
-        ch+=(unsigned char)text[idx];
-        idx++;
-      }
-      ch-=offsetsFromUTF8[extraBytesToRead];
-
-      if (ch <= UNI_MAX_BMP) { /* Target is a character <= 0xFFFF */
-        /* UTF-16 surrogate values are illegal in UTF-32 */
-        if (ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_LOW_END) {
-          return result;
-        }
-        else {
-          result.append(1,(wchar_t)ch); /* normal case */
-        }
-      }
-      else if (ch > UNI_MAX_UTF16) {
-        return result;
-      }
-      else {
-        /* target is a character in range 0xFFFF - 0x10FFFF. */
-        ch -= halfBase;
-        result.append(1,(wchar_t)((ch >> halfShift) + UNI_SUR_HIGH_START));
-        result.append(1,(wchar_t)((ch & halfMask) + UNI_SUR_LOW_START));
-      }
-    }
+    return WStringToUTF8String(LocaleStringToWString(text));
+  }
 #endif
 
-    return result;
+#if defined(HAVE_ICONV)
+  std::string UTF8StringToLocaleString(const std::string& text)
+  {
+    iconv_t handle;
+
+    handle=iconv_open("","UTF-8");
+    if (handle==(iconv_t)-1) {
+      log.Error() << "Error iconv_open in UTF8StringToLocaleString() " << strerror(errno);
+      return "";
+    }
+
+    // length+1 to get the result '\0'-terminated
+    size_t inCount=text.length()+1;
+    size_t outCount=text.length()*4+2; // Up to 4 bytes for one UTF-8 character and space for a byte order mark
+
+    char *in=const_cast<char*>(text.data());
+    char *out=new char[outCount];
+
+    char   *tmpOut=out;
+    size_t tmpOutCount=outCount;
+
+    if (iconv(handle,(ICONV_CONST char**)&in,&inCount,&tmpOut,&tmpOutCount)==(size_t)-1) {
+      iconv_close(handle);
+      delete [] out;
+      log.Error() << "Error iconv in UTF8StringToLocaleString() " << strerror(errno);
+      return "";
+    }
+
+    std::string res=out;
+
+    delete [] out;
+
+    iconv_close(handle);
+
+    return res;
+  }
+#else
+  std::string UTF8StringToLocaleString(const std::string& text)
+  {
+    return WStringToLocaleString(UTF8StringToWString(text));
   }
 #endif
 
@@ -667,5 +763,122 @@ namespace osmscout {
     //std::wcout << "* c \"" << wstr << std::endl;
 
     return WStringToUTF8String(wstr);
+  }
+
+  std::string UTF8NormForLookup(const std::string& text)
+  {
+    std::wstring wstr=UTF8StringToWString(text);
+
+    auto& f=std::use_facet<std::ctype<wchar_t>>(std::locale());
+
+    // convert to lower and replace all whitespaces with simple space
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                   [&f](wchar_t c) -> wchar_t {
+                     // std::iswspace don't recognize no-break space and others
+                     // so-space characters as space -> we are using switch here...
+                     switch(c){
+                       case ' ':
+                       case L'\u0009': // tabular
+                       case L'\u00A0': // no-break space (&nbsp;)
+                       case L'\u2007': // figure space
+                       case L'\u202F': // narrow no-break space
+                         return ' ';
+                       default:
+                         return f.tolower(c); // to lower
+                     }});
+
+    // TODO: remove multiple following spaces by one
+
+    return WStringToUTF8String(wstr);
+  }
+
+  /**
+   * returns the utc timezone offset
+   * (e.g. -8 hours for PST)
+   */
+  int GetUtcOffset() {
+
+    time_t zero = 24*60*60L;
+    struct tm * timeptr;
+    int gmtimeHours;
+
+    // get the local time for Jan 2, 1900 00:00 UTC
+    timeptr = localtime( &zero );
+    gmtimeHours = timeptr->tm_hour;
+
+    // if the local time is the "day before" the UTC, subtract 24 hours
+    // from the hours to get the UTC offset
+    if(timeptr->tm_mday < 2) {
+      gmtimeHours -= 24;
+    }
+
+    return gmtimeHours;
+  }
+
+  /**
+   * https://stackoverflow.com/a/9088549/1632737
+   *
+   * the utc analogue of mktime,
+   * (much like timegm on some systems)
+   */
+  time_t MkTimeUTC(struct tm *timeptr) {
+    // gets the epoch time relative to the local time zone,
+    // and then adds the appropriate number of seconds to make it UTC
+    return mktime(timeptr) + GetUtcOffset() * 3600;
+  }
+
+  bool ParseISO8601TimeString(const std::string &timeStr, Timestamp &timestamp)
+  {
+    using namespace std::chrono;
+
+    // ISO 8601 allows milliseconds in date optionally
+    // but std::get_time provides just second accuracy
+    // so, we use sscanf for parse string and add
+    // milliseconds timestamp later
+    int y,M,d,h,m,s,mill;
+    int ret=std::sscanf(timeStr.c_str(), "%d-%d-%dT%d:%d:%d.%dZ", &y, &M, &d, &h, &m, &s, &mill);
+    if (ret<6){
+      return false;
+    }
+
+    std::tm time{};
+
+    time.tm_year = y - 1900; // Year since 1900
+    time.tm_mon = M - 1;     // 0-11
+    time.tm_mday = d;        // 1-31
+    time.tm_hour = h;        // 0-23
+    time.tm_min = m;         // 0-59
+    time.tm_sec = s;         // 0-60
+
+    std::time_t tt = MkTimeUTC(&time);
+
+    time_point<system_clock, nanoseconds> timePoint=system_clock::from_time_t(tt);
+    timestamp=time_point_cast<milliseconds,system_clock,nanoseconds>(timePoint);
+    // add milliseconds
+    if (ret>6) {
+      timestamp += milliseconds(mill);
+    }
+
+    return true;
+  }
+
+  std::string TimestampToISO8601TimeString(const Timestamp &timestamp){
+    using namespace std::chrono;
+
+    std::ostringstream stream;
+
+    std::time_t tt = system_clock::to_time_t(timestamp);
+    std::tm tm = *std::gmtime(&tt);
+
+    std::array<char, 64> buff;
+    std::strftime(buff.data(), buff.size(), "%FT%T.", &tm);
+
+    stream << buff.data();
+
+    // add milliseconds
+    auto millisFromEpoch = timestamp.time_since_epoch().count();
+    stream << (millisFromEpoch - ((millisFromEpoch / 1000) * 1000));
+    stream << "Z";
+    return stream.str();
   }
 }

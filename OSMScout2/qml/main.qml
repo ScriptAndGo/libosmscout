@@ -113,6 +113,7 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
             focus: true
+            renderingType: "plane" // or "tiled"
 
             function getFreeRect() {
                 return Qt.rect(Theme.horizSpace,
@@ -133,6 +134,24 @@ Window {
                 }else{
                   map.view = appSettings.mapView;
                 }
+            }
+
+            TiledMapOverlay {
+                anchors.fill: parent
+                view: map.view
+                enabled: false
+                opacity: 0.5
+                // If you intend to use tiles from OpenMapSurfer services in your own applications please contact us.
+                // https://korona.geog.uni-heidelberg.de/contact.html
+                provider: {
+                      "id": "ASTER_GDEM",
+                      "name": "Hillshade",
+                      "servers": [
+                        "https://korona.geog.uni-heidelberg.de/tiles/asterh/x=%2&y=%3&z=%1"
+                      ],
+                      "maximumZoomLevel": 18,
+                      "copyright": "© IAT, METI, NASA, NOAA",
+                    }
             }
 
             onTap: {
@@ -234,6 +253,8 @@ Window {
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 desktop: map
+                searchCenterLat: map.lat
+                searchCenterLon: map.lon
 
                 onShowLocation: {
                     console.log("location: "+location);
@@ -299,6 +320,15 @@ Window {
                 y: parent.height-height-Theme.vertSpace
 
                 spacing: Theme.mapButtonSpace
+
+                MapButton {
+                    id: resetRotation
+                    label: "|"
+
+                    onClicked: {
+                        map.rotateTo(0);
+                    }
+                }
 
                 MapButton {
                     id: recenter

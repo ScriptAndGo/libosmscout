@@ -28,7 +28,7 @@
 
 #include <osmscout/CoordDataFile.h>
 #include <osmscout/NumericIndex.h>
-#include <osmscout/TurnRestriction.h>
+#include <osmscout/routing/TurnRestriction.h>
 
 #include <osmscout/import/Import.h>
 #include <osmscout/import/RawWay.h>
@@ -78,11 +78,11 @@ namespace osmscout {
 
   public:
     void GetDescription(const ImportParameter& parameter,
-                        ImportModuleDescription& description) const;
+                        ImportModuleDescription& description) const override;
 
     bool Import(const TypeConfigRef& typeConfig,
                 const ImportParameter& parameter,
-                Progress& progress);
+                Progress& progress) override;
   };
 }
 

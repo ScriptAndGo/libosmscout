@@ -39,6 +39,23 @@
 
 namespace osmscout {
 
+  class Preprocessor;
+  class PreprocessorCallback;
+
+  class OSMSCOUT_IMPORT_API PreprocessorFactory
+  {
+  public:
+    virtual ~PreprocessorFactory()
+    {
+
+    }
+
+    virtual std::unique_ptr<Preprocessor> GetProcessor(const std::string& filename,
+                                                       PreprocessorCallback& callback) const = 0;
+  };
+
+  typedef std::shared_ptr<PreprocessorFactory> PreprocessorFactoryRef;
+
   /**
     Collects all parameter that have influence on the import.
 
@@ -90,7 +107,7 @@ namespace osmscout {
 
     typedef std::shared_ptr<Router> RouterRef;
 
-    enum class OSMSCOUT_IMPORT_API AssumeLandStrategy
+    enum class AssumeLandStrategy
     {
       disable   = 0, // disable land detection by database objects
       enable    = 1, // enable land detection
@@ -106,6 +123,7 @@ namespace osmscout {
 
     size_t                       startStep;                //<! Starting step for import
     size_t                       endStep;                  //<! End step for import
+    std::string                  boundingPolygonFile;      //<! Polygon file containing the bounding polygon of the current import
     bool                         eco;                      //<! Eco modus, deletes temporary files ASAP
     std::list<Router>            router;                   //<! Definition of router
 
@@ -148,12 +166,12 @@ namespace osmscout {
     size_t                       areaWayMinMag;            //<! Minimum magnification of index for individual type
     size_t                       areaWayIndexMaxLevel;     //<! Maximum zoom level for area way index bitmap
 
-    size_t                       waterIndexMinMag;         //<! Minimum level of the generated water index
-    size_t                       waterIndexMaxMag;         //<! Maximum level of the generated water index
+    uint32_t                     waterIndexMinMag;         //<! Minimum level of the generated water index
+    uint32_t                     waterIndexMaxMag;         //<! Maximum level of the generated water index
 
     size_t                       optimizationMaxWayCount;  //<! Maximum number of ways for one iteration
-    size_t                       optimizationMaxMag;       //<! Maximum magnification for optimization
-    size_t                       optimizationMinMag;       //<! Minimum magnification of index for individual type
+    uint32_t                     optimizationMaxMag;       //<! Maximum magnification for optimization
+    uint32_t                     optimizationMinMag;       //<! Minimum magnification of index for individual type
     size_t                       optimizationCellSizeAverage; //<! Average entries per index cell
     size_t                       optimizationCellSizeMax;  //<! Maximum number of entries  per index cell
     TransPolygon::OptimizeMethod optimizationWayMethod;    //<! what method to use to optimize ways
@@ -166,8 +184,12 @@ namespace osmscout {
                                                            //<! place_name[:lang] tags
     std::vector<std::string>     altLangOrder;             //<! the same as langOrder but for a alt (second) lang
 
+    size_t                       maxAdminLevel;            //<! Maximum admin level that gets evalutated
+
     OSMId                        firstFreeOSMId;           //<! first id available for synthetic objects (parsed polygon files)
     size_t                       fillWaterArea;            //<! count of tiles around coastlines flooded by water
+
+    PreprocessorFactoryRef       preprocessorFactory;      //<! Optional preprocessor factory to inject custom preprocessors
 
   public:
     ImportParameter();
@@ -176,6 +198,7 @@ namespace osmscout {
     const std::list<std::string>& GetMapfiles() const;
     std::string GetTypefile() const;
     std::string GetDestinationDirectory() const;
+    std::string GetBoundingPolygonFile() const;
 
     ImportErrorReporterRef GetErrorReporter() const;
 
@@ -225,12 +248,12 @@ namespace osmscout {
 
     size_t GetAreaAreaIndexMaxMag() const;
 
-    size_t GetWaterIndexMinMag() const;
-    size_t GetWaterIndexMaxMag() const;
+    uint32_t GetWaterIndexMinMag() const;
+    uint32_t GetWaterIndexMaxMag() const;
 
     size_t GetOptimizationMaxWayCount() const;
-    size_t GetOptimizationMaxMag() const;
-    size_t GetOptimizationMinMag() const;
+    uint32_t GetOptimizationMaxMag() const;
+    uint32_t GetOptimizationMinMag() const;
     size_t GetOptimizationCellSizeAverage() const;
     size_t GetOptimizationCellSizeMax() const;
     TransPolygon::OptimizeMethod GetOptimizationWayMethod() const;
@@ -244,9 +267,12 @@ namespace osmscout {
     const std::vector<std::string>& GetLangOrder () const;
     const std::vector<std::string>& GetAltLangOrder () const;
 
+    size_t GetMaxAdminLevel() const;
+
     void SetMapfiles(const std::list<std::string>& mapfile);
     void SetTypefile(const std::string& typefile);
     void SetDestinationDirectory(const std::string& destinationDirectory);
+    void SetBoundingPolygonFile(const std::string& boundingPolygonFile);
 
     void SetErrorReporter(const ImportErrorReporterRef& errorReporter);
 
@@ -270,11 +296,9 @@ namespace osmscout {
     void SetRawCoordBlockSize(size_t blockSize);
 
     void SetRawNodeDataMemoryMaped(bool memoryMaped);
-    void SetRawNodeDataCacheSize(size_t nodeDataCacheSize);
 
     void SetRawWayIndexMemoryMaped(bool memoryMaped);
     void SetRawWayDataMemoryMaped(bool memoryMaped);
-    void SetRawWayDataCacheSize(size_t wayDataCacheSize);
     void SetRawWayIndexCacheSize(size_t wayIndexCacheSize);
     void SetRawWayBlockSize(size_t blockSize);
 
@@ -298,12 +322,12 @@ namespace osmscout {
     void SetAreaWayMinMag(size_t areaWayMinMag);
     void SetAreaWayIndexMaxMag(size_t areaWayIndexMaxLevel);
 
-    void SetWaterIndexMinMag(size_t waterIndexMinMag);
-    void SetWaterIndexMaxMag(size_t waterIndexMaxMag);
+    void SetWaterIndexMinMag(uint32_t waterIndexMinMag);
+    void SetWaterIndexMaxMag(uint32_t waterIndexMaxMag);
 
     void SetOptimizationMaxWayCount(size_t optimizationMaxWayCount);
-    void SetOptimizationMaxMag(size_t optimizationMaxMag);
-    void SetOptimizationMinMag(size_t optimizationMinMag);
+    void SetOptimizationMaxMag(uint32_t optimizationMaxMag);
+    void SetOptimizationMinMag(uint32_t optimizationMinMag);
     void SetOptimizationCellSizeAverage(size_t optimizationCellSizeAverage);
     void SetOptimizationCellSizeMax(size_t optimizationCellSizeMax);
     void SetOptimizationWayMethod(TransPolygon::OptimizeMethod optimizationWayMethod);
@@ -315,10 +339,17 @@ namespace osmscout {
     void SetLangOrder(const std::vector<std::string>& langOrder);
     void SetAltLangOrder(const std::vector<std::string>& altLangOrder);
 
+    void SetMaxAdminLevel(size_t maxAdminLevel);
+
     void SetFirstFreeOSMId(OSMId id);
 
     void SetFillWaterArea(size_t fillWaterArea);
     size_t GetFillWaterArea() const;
+
+    void SetPreprocessorFactory(const PreprocessorFactoryRef& factory);
+
+    std::unique_ptr<Preprocessor> GetPreprocessor(const std::string& filename,
+                                                  PreprocessorCallback& callback) const;
   };
 
   class OSMSCOUT_IMPORT_API ImportModuleDescription CLASS_FINAL
@@ -442,7 +473,7 @@ namespace osmscout {
     bool ExecuteModules(const TypeConfigRef& typeConfig,
                         Progress& progress);
   public:
-    Importer(const ImportParameter& parameter);
+    explicit Importer(const ImportParameter& parameter);
     virtual ~Importer();
 
     bool Import(Progress& progress);

@@ -35,8 +35,8 @@ namespace osmscout {
 
   const char*           RelAreaDataGenerator::RELAREA_TMP="relarea.tmp";
   const char*           RelAreaDataGenerator::WAYAREABLACK_DAT="wayareablack.dat";
-  static const uint64_t MAX_WAYS=1000;
-  static const uint64_t MAX_COORDS=100000;
+  static const uint64_t MAX_WAYS=1500;
+  static const uint64_t MAX_COORDS=150000;
 
   /**
     Find a top level role.
@@ -124,7 +124,7 @@ namespace osmscout {
                                          std::list<MultipolygonPart>& groups,
                                          GroupingState& state,
                                          size_t topIndex,
-                                         size_t id)
+                                         uint8_t id)
   {
     std::list<MultipolygonPart>::const_iterator sub;
     size_t                                      subIndex;
@@ -181,23 +181,23 @@ namespace osmscout {
 
     for (const auto& entry : partsByEnd) {
       if (entry.second.size()<2) {
-        progress.Error("Node "+NumberToString(entry.first)+
-                       " of way "+NumberToString(entry.second.front()->ways.front()->GetId())+
+        progress.Error("Node "+std::to_string(entry.first)+
+                       " of way "+std::to_string(entry.second.front()->ways.front()->GetId())+
                        " cannot be joined with any other way of the relation "+
-                       NumberToString(id)+" "+name);
+                       std::to_string(id)+" "+name);
 
         parameter.GetErrorReporter()->ReportRelation(id,
                                                      type,
                                                      "Incomplete or broken relation - cannot join path "+
-                                                     NumberToString(entry.second.front()->ways.front()->GetId()));
+                                                     std::to_string(entry.second.front()->ways.front()->GetId()));
         return false;
       }
 
       if (entry.second.size()%2!=0) {
-        progress.Error("Node "+NumberToString(entry.first)+
-                       " of way "+NumberToString(entry.second.front()->ways.front()->GetId())+
+        progress.Error("Node "+std::to_string(entry.first)+
+                       " of way "+std::to_string(entry.second.front()->ways.front()->GetId())+
                        " can be joined with uneven number of ways of the relation "+
-                       NumberToString(id)+" "+name);
+                       std::to_string(id)+" "+name);
         return false;
       }
     }
@@ -298,8 +298,8 @@ namespace osmscout {
 
         if (parameter.GetStrictAreas() &&
             !AreaIsSimple(ring.role.nodes)) {
-          progress.Error("Resolved ring including way "+NumberToString(ring.ways.front()->GetId())+
-                         " is not simple for multipolygon relation "+NumberToString(id)+" "+
+          progress.Error("Resolved ring including way "+std::to_string(ring.ways.front()->GetId())+
+                         " is not simple for multipolygon relation "+std::to_string(id)+" "+
                          name);
 
           return false;
@@ -379,7 +379,7 @@ namespace osmscout {
 
       if (top==parts.end()) {
         progress.Warning("Error during ring grouping for multipolygon relation "+
-                         NumberToString(id)+" "+
+                         std::to_string(id)+" "+
                          name);
         return false;
       }
@@ -396,7 +396,7 @@ namespace osmscout {
     }
 
     if (groups.empty()) {
-      progress.Warning("No groups for multipolygon relation "+NumberToString(id)+" "+
+      progress.Warning("No groups for multipolygon relation "+std::to_string(id)+" "+
                        name);
       return false;
     }
@@ -421,7 +421,7 @@ namespace osmscout {
     for (const auto& member : rawRelation.members) {
       if (member.type==RawRelation::memberRelation) {
         progress.Warning("Unsupported relation reference in relation "+
-                         NumberToString(rawRelation.GetId())+" "+
+                         std::to_string(rawRelation.GetId())+" "+
                          rawRelation.GetType()->GetName()+" "+
                          name);
       }
@@ -433,9 +433,9 @@ namespace osmscout {
 
         if (wayEntry==wayMap.end()) {
           progress.Error("Cannot resolve way member "+
-                         NumberToString(member.id)+
+                         std::to_string(member.id)+
                          " for relation "+
-                         NumberToString(rawRelation.GetId())+" "+
+                         std::to_string(rawRelation.GetId())+" "+
                          rawRelation.GetType()->GetName()+" "+
                          name);
 
@@ -456,9 +456,9 @@ namespace osmscout {
 
           if (coordEntry==coordMap.end()) {
             progress.Error("Cannot resolve node member "+
-                           NumberToString(osmId)+
+                           std::to_string(osmId)+
                            " for relation "+
-                           NumberToString(rawRelation.GetId())+" "+
+                           std::to_string(rawRelation.GetId())+" "+
                            rawRelation.GetType()->GetName()+" "+
                            name);
 
@@ -497,9 +497,9 @@ namespace osmscout {
 
           if (relationEntry==relationMap.end()) {
             progress.Error("Cannot resolve relation member "+
-                           NumberToString(member.id)+
+                           std::to_string(member.id)+
                            " for relation "+
-                           NumberToString(rawRelation.GetId())+" "+
+                           std::to_string(rawRelation.GetId())+" "+
                            rawRelation.GetType()->GetName()+" "+
                            name);
 
@@ -525,7 +525,7 @@ namespace osmscout {
         }
         else {
           progress.Warning("Ignored boundary relation role '"+member.role+"' in relation "+
-                           NumberToString(rawRelation.GetId())+" "+
+                           std::to_string(rawRelation.GetId())+" "+
                            rawRelation.GetType()->GetName()+" "+
                            name);
         }
@@ -538,9 +538,9 @@ namespace osmscout {
 
         if (wayEntry==wayMap.end()) {
           progress.Error("Cannot resolve way member "+
-                         NumberToString(member.id)+
+                         std::to_string(member.id)+
                          " for relation "+
-                         NumberToString(rawRelation.GetId())+" "+
+                         std::to_string(rawRelation.GetId())+" "+
                          rawRelation.GetType()->GetName()+" "+
                          name);
 
@@ -561,9 +561,9 @@ namespace osmscout {
 
           if (coordEntry==coordMap.end()) {
             progress.Error("Cannot resolve node member "+
-                           NumberToString(osmId)+
+                           std::to_string(osmId)+
                            " for relation "+
-                           NumberToString(rawRelation.GetId())+" "+
+                           std::to_string(rawRelation.GetId())+" "+
                            rawRelation.GetType()->GetName()+" "+
                            name);
 
@@ -625,6 +625,8 @@ namespace osmscout {
 
     // Initial collection of all relation and way ids of the top level relation
 
+    bool hasMaxWayError = false;
+
     for (const auto& member : rawRelation.members) {
       if (member.type==RawRelation::memberWay &&
           (member.role=="inner" ||
@@ -633,11 +635,8 @@ namespace osmscout {
         wayIds.insert(member.id);
 
         if (wayIds.size()>MAX_WAYS) {
-          progress.Error("Relation "+
-                         NumberToString(rawRelation.GetId())+" "+name+
-                         " references too many ways (" +
-                         NumberToString(wayIds.size())+")");
-          return false;
+          hasMaxWayError = true;
+          continue;
         }
       }
       else if (member.type==RawRelation::memberRelation &&
@@ -647,17 +646,17 @@ namespace osmscout {
         if (boundaryTypes.IsSet(rawRelation.GetType())) {
           if (visitedRelationIds.find(member.id)!=visitedRelationIds.end()) {
             progress.Warning("Relation "+
-                             NumberToString(member.id)+
+                             std::to_string(member.id)+
                              " is referenced multiple times within relation "+
-                             NumberToString(rawRelation.GetId())+" "+name);
+                             std::to_string(rawRelation.GetId())+" "+name);
             continue;
           }
 
           if (resolvedRelations.find(member.id)!=resolvedRelations.end()) {
             progress.Error("Found self referencing relation "+
-                           NumberToString(member.id)+
+                           std::to_string(member.id)+
                            " during resolving of members of relation "+
-                           NumberToString(rawRelation.GetId())+" "+name);
+                           std::to_string(rawRelation.GetId())+" "+name);
             return false;
           }
 
@@ -665,7 +664,7 @@ namespace osmscout {
         }
         else {
           progress.Warning("Unsupported relation reference in relation "+
-                           NumberToString(rawRelation.GetId())+" "+
+                           std::to_string(rawRelation.GetId())+" "+
                            rawRelation.GetType()->GetName()+" "+
                            name);
         }
@@ -682,7 +681,7 @@ namespace osmscout {
       if (!relDataFile.Get(pendingRelationIds,
                            childRelations)) {
         progress.Error("Cannot resolve child relations of relation "+
-                       NumberToString(rawRelation.GetId())+" "+name);
+                       std::to_string(rawRelation.GetId())+" "+name);
         return false;
       }
 
@@ -700,11 +699,8 @@ namespace osmscout {
             wayIds.insert(member.id);
 
             if (wayIds.size()>MAX_WAYS) {
-              progress.Error("Relation "+
-                             NumberToString(rawRelation.GetId())+" "+name+
-                             " references too many ways (" +
-                             NumberToString(wayIds.size())+")");
-              return false;
+              hasMaxWayError = true;
+              continue;
             }
           }
           else if (member.type==RawRelation::memberRelation &&
@@ -714,17 +710,17 @@ namespace osmscout {
             if (boundaryTypes.IsSet(rawRelation.GetType())) {
               if (visitedRelationIds.find(member.id)!=visitedRelationIds.end()) {
                 progress.Warning("Relation "+
-                                 NumberToString(member.id)+
+                                 std::to_string(member.id)+
                                  " is referenced multiple times within relation "+
-                                 NumberToString(rawRelation.GetId())+" "+name);
+                                 std::to_string(rawRelation.GetId())+" "+name);
                 continue;;
               }
 
               if (resolvedRelations.find(member.id)!=resolvedRelations.end()) {
                 progress.Error("Found self referencing relation "+
-                               NumberToString(member.id)+
+                               std::to_string(member.id)+
                                " during resolving of members of relation "+
-                               NumberToString(rawRelation.GetId())+" "+
+                               std::to_string(rawRelation.GetId())+" "+
                                rawRelation.GetType()->GetName()+" "+
                                name);
                 return false;
@@ -734,13 +730,21 @@ namespace osmscout {
             }
             else {
               progress.Warning("Unsupported relation reference in relation "+
-                               NumberToString(rawRelation.GetId())+" "+
+                               std::to_string(rawRelation.GetId())+" "+
                                rawRelation.GetType()->GetName()+" "+
                                name);
             }
           }
         }
       }
+    }
+
+    if (hasMaxWayError) {
+      progress.Error("Relation "+
+                      std::to_string(rawRelation.GetId())+" "+name+
+                      " references too many ways (" +
+                      std::to_string(wayIds.size())+")");
+      return false;
     }
 
     // Now load all ways and collect all coordinate ids
@@ -752,7 +756,7 @@ namespace osmscout {
     if (!wayDataFile.Get(wayIds,
                          ways)) {
       progress.Error("Cannot resolve child ways of relation "+
-                     NumberToString(rawRelation.GetId())+" "+
+                     std::to_string(rawRelation.GetId())+" "+
                      rawRelation.GetType()->GetName()+" "+
                      name);
       return false;
@@ -775,16 +779,16 @@ namespace osmscout {
 
     if (nodeIds.size()>MAX_COORDS) {
       progress.Error("Relation "+
-                     NumberToString(rawRelation.GetId())+" "+name+
+                     std::to_string(rawRelation.GetId())+" "+name+
                      " references too many nodes (" +
-                     NumberToString(nodeIds.size())+")");
+                     std::to_string(nodeIds.size())+")");
       return false;
     }
 
     if (!coordDataFile.Get(nodeIds,
                            coordMap)) {
       progress.Error("Cannot resolve child nodes of relation "+
-                     NumberToString(rawRelation.GetId())+" "+
+                     std::to_string(rawRelation.GetId())+" "+
                      rawRelation.GetType()->GetName()+" "+
                      name);
       return false;
@@ -974,7 +978,7 @@ namespace osmscout {
 
       if (progress.OutputDebug() && masterType!=typeConfig.typeInfoIgnore) {
         progress.Debug("Autodetecting type of multipolygon relation "+
-                       NumberToString(rawRelation.GetId())+" as "+
+                       std::to_string(rawRelation.GetId())+" as "+
                        masterType->GetName());
       }
 
@@ -1145,7 +1149,7 @@ namespace osmscout {
 
     if (!coordDataFile.Open(parameter.GetDestinationDirectory(),
                             parameter.GetCoordDataMemoryMaped())) {
-      std::cerr << "Cannot open coord data files!" << std::endl;
+      log.Error() << "Cannot open coord data files!";
       return false;
     }
 
@@ -1153,7 +1157,7 @@ namespace osmscout {
                           parameter.GetDestinationDirectory(),
                           parameter.GetRawWayIndexMemoryMaped(),
                           parameter.GetRawWayDataMemoryMaped())) {
-      std::cerr << "Cannot open raw way data files!" << std::endl;
+      log.Error() << "Cannot open raw way data files!";
       return false;
     }
 
@@ -1161,7 +1165,7 @@ namespace osmscout {
                           parameter.GetDestinationDirectory(),
                           true,
                           true)) {
-      std::cerr << "Cannot open raw relation data files!" << std::endl;
+      log.Error() << "Cannot open raw relation data files!";
       return false;
     }
 
@@ -1249,7 +1253,7 @@ namespace osmscout {
 
         if (!valid) {
           progress.Warning("Relation "+
-                           NumberToString(rawRel.GetId())+" "+
+                           std::to_string(rawRel.GetId())+" "+
                            rel.GetType()->GetName()+" "+
                            name+" has ring with less than three nodes, skipping");
           parameter.GetErrorReporter()->ReportRelation(rawRel.GetId(),
@@ -1260,7 +1264,7 @@ namespace osmscout {
 
         if (!dense) {
           progress.Warning("Relation "+
-                           NumberToString(rawRel.GetId())+" "+
+                           std::to_string(rawRel.GetId())+" "+
                            rel.GetType()->GetName()+" "+
                            name+" has ring(s) which nodes are not dense enough to be written, skipping");
           continue;
@@ -1268,7 +1272,7 @@ namespace osmscout {
 
         if (big) {
           progress.Warning("Relation "+
-                           NumberToString(rawRel.GetId())+" "+
+                           std::to_string(rawRel.GetId())+" "+
                            rel.GetType()->GetName()+" "+
                            name+" has ring(s) with too many nodes, skipping");
           continue;
@@ -1290,8 +1294,8 @@ namespace osmscout {
         writtenRelationCount++;
       }
 
-      progress.Info(NumberToString(rawRelationCount)+" relations read"+
-                    ", "+NumberToString(writtenRelationCount)+" relations written");
+      progress.Info(std::to_string(rawRelationCount)+" relations read"+
+                    ", "+std::to_string(writtenRelationCount)+" relations written");
 
       writer.SetPos(0);
       writer.Write(writtenRelationCount);
@@ -1314,7 +1318,7 @@ namespace osmscout {
         writer.WriteNumber(id);
       }
 
-      progress.Info(NumberToString(wayAreaIndexBlacklist.size())+" ways written to blacklist");
+      progress.Info(std::to_string(wayAreaIndexBlacklist.size())+" ways written to blacklist");
 
       progress.Info("Dump statistics");
 
@@ -1322,8 +1326,8 @@ namespace osmscout {
         size_t idx=type->GetIndex();
 
         std::string buffer=type->GetName()+": "+
-                NumberToString(wayTypeCount[idx])+" "+NumberToString(wayNodeTypeCount[idx])+" "+
-                NumberToString(areaTypeCount[idx])+" "+NumberToString(areaNodeTypeCount[idx]);
+                std::to_string(wayTypeCount[idx])+" "+std::to_string(wayNodeTypeCount[idx])+" "+
+                std::to_string(areaTypeCount[idx])+" "+std::to_string(areaNodeTypeCount[idx]);
 
         progress.Debug(buffer);
       }

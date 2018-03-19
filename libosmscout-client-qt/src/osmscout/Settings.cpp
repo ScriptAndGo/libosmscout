@@ -30,7 +30,7 @@
 #include <QJsonObject>
 
 #include <osmscout/Settings.h>
-#include <osmscout/DBThread.h>
+#include <osmscout/OSMScoutQt.h>
 
 Settings::Settings(QSettings *providedStorage):
   storage(providedStorage)
@@ -126,6 +126,7 @@ void Settings::SetOnlineTileProviderId(QString id){
     if (GetOnlineTileProviderId() != id){
         storage->setValue("OSMScoutLib/Rendering/OnlineTileProvider", id);
         emit OnlineTileProviderIdChanged(id);
+        emit OnlineTileProviderChanged(GetOnlineTileProvider());
     }
 }
 
@@ -294,9 +295,19 @@ const QString Settings::GetHttpCacheDir() const
   return cacheLocation + QDir::separator() + "OSMScoutHttpCache";
 }
 
+const QByteArray Settings::GetCookieData() const
+{
+  return storage->value("OSMScoutLib/General/Cookies").toByteArray();
+}
+
+void Settings::SetCookieData(const QByteArray data)
+{
+  storage->setValue("OSMScoutLib/General/Cookies", data);
+}
+
 QmlSettings::QmlSettings()
 {
-    settings=DBThread::GetInstance()->GetSettings();
+    settings=OSMScoutQt::GetInstance().GetSettings();
 
     connect(settings.get(), SIGNAL(MapDPIChange(double)),
             this, SIGNAL(MapDPIChange(double)));

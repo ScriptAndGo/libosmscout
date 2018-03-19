@@ -26,10 +26,9 @@ namespace osmscout {
 
   MapPainterNoOp::MapPainterNoOp(const StyleConfigRef& styleConfig)
           : MapPainter(styleConfig,
-                       new CoordBufferImpl<Vertex2D>()),
-            coordBuffer((CoordBufferImpl<Vertex2D>*) transBuffer.buffer)
+                       new CoordBuffer())
   {
-
+    // no code
   }
 
   bool MapPainterNoOp::HasIcon(const StyleConfig& /*styleConfig*/,
@@ -39,28 +38,25 @@ namespace osmscout {
     return false;
   }
 
-  void MapPainterNoOp::GetFontHeight(const Projection& /*projection*/,
+  double MapPainterNoOp::GetFontHeight(const Projection& /*projection*/,
                                      const MapParameter& /*parameter*/,
-                                     double fontSize,
-                                     double& height)
+                                     double fontSize)
   {
-    height=FONT_HEIGHT_FACTOR*fontSize;
+    return FONT_HEIGHT_FACTOR*fontSize;
   }
 
-  void MapPainterNoOp::GetTextDimension(const Projection& /*projection*/,
-                                        const MapParameter& /*parameter*/,
-                                        double /*objectWidth*/,
-                                        double fontSize,
-                                        const std::string& text,
-                                        double& xOff,
-                                        double& yOff,
-                                        double& width,
-                                        double& height)
+  MapPainter::TextDimension MapPainterNoOp::GetTextDimension(const Projection& /*projection*/,
+                                                             const MapParameter& /*parameter*/,
+                                                             double /*objectWidth*/,
+                                                             double fontSize,
+                                                             const std::string& text)
   {
-    xOff=0;
-    yOff=0;
-    height=FONT_HEIGHT_FACTOR*FONT_WIDTH_HEIGHT_FACTOR*fontSize;
-    width=text.length()*height;
+    double height=FONT_HEIGHT_FACTOR*FONT_WIDTH_HEIGHT_FACTOR*fontSize;
+
+    return TextDimension(0.0,
+                         0.0,
+                         text.length()*height,
+                         height);
   }
 
   void MapPainterNoOp::DrawGround(const Projection& /*projection*/,
@@ -116,7 +112,8 @@ namespace osmscout {
                                         const PathTextStyle& /*style*/,
                                         const std::string& /*text*/,
                                         size_t /*transStart*/,
-                                        size_t /*transEnd*/)
+                                        size_t /*transEnd*/,
+                                        ContourLabelHelper& /*helper*/)
   {
     // no code
   }

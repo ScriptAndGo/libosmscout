@@ -20,15 +20,20 @@
 
 #include <osmscout/MapStyleModel.h>
 #include <osmscout/DBThread.h>
+#include <osmscout/OSMScoutQt.h>
 
 MapStyleModel::MapStyleModel():
   QAbstractListModel()
-{ 
-  DBThread* dbThread = DBThread::GetInstance();
-  connect(dbThread,SIGNAL(stylesheetFilenameChanged()),
-          this,SIGNAL(styleChanged()));
+{
+  styleModule=OSMScoutQt::GetInstance().MakeStyleModule();
+  connect(styleModule,SIGNAL(stylesheetFilenameChanged()),
+          this,SIGNAL(styleChanged()),
+          Qt::QueuedConnection);
+  connect(this,SIGNAL(loadStyleRequested(QString,std::unordered_map<std::string,bool>)),
+          styleModule,SLOT(loadStyle(QString,std::unordered_map<std::string,bool>)),
+          Qt::QueuedConnection);
 
-  SettingsRef settings=DBThread::GetInstance()->GetSettings();
+  SettingsRef settings=OSMScoutQt::GetInstance().GetSettings();
 
   QDirIterator dirIt(settings->GetStyleSheetDirectory(), QDirIterator::FollowSymlinks);
   while (dirIt.hasNext()) {
@@ -42,24 +47,26 @@ MapStyleModel::MapStyleModel():
 
 MapStyleModel::~MapStyleModel()
 {
+  if (styleModule!=NULL){
+    styleModule->deleteLater();
+    styleModule=NULL;
+  }
 }
 
 QString MapStyleModel::getStyle() const
 {
-  QFileInfo fileInfo(DBThread::GetInstance()->GetStylesheetFilename());
+  QFileInfo fileInfo(OSMScoutQt::GetInstance().GetDBThread()->GetStylesheetFilename());
   return fileInfo.fileName();
 }
 
-void MapStyleModel::setStyle(const QString &styleFile) const
+void MapStyleModel::setStyle(const QString &styleFile)
 {
-  DBThread* dbThread = DBThread::GetInstance();
-  SettingsRef settings=dbThread->GetSettings();
+  SettingsRef settings=OSMScoutQt::GetInstance().GetSettings();
 
   settings->SetStyleSheetFile(styleFile);
 
-  dbThread->LoadStyle(
-    settings->GetStyleSheetAbsoluteFile(),
-    settings->GetStyleSheetFlags());
+  emit loadStyleRequested(settings->GetStyleSheetAbsoluteFile(),
+                          settings->GetStyleSheetFlags());
 }
 
 Q_INVOKABLE int MapStyleModel::indexOf(const QString &style) const
@@ -115,7 +122,7 @@ QHash<int, QByteArray> MapStyleModel::roleNames() const
 Qt::ItemFlags MapStyleModel::flags(const QModelIndex &index) const
 {
   if(!index.isValid()) {
-      return Qt::ItemIsEnabled;
+    return Qt::ItemIsEnabled;
   }
 
   return QAbstractListModel::flags(index) | Qt::ItemIsEnabled | Qt::ItemIsSelectable;

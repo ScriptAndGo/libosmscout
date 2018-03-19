@@ -22,8 +22,6 @@
 
 #include <osmscout/CoreFeatures.h>
 
-#include <iostream>
-
 #include <limits>
 #include <list>
 #include <unordered_map>
@@ -32,6 +30,8 @@
 #include <osmscout/system/Assert.h>
 
 #include <osmscout/Types.h>
+
+#include <osmscout/util/Logger.h>
 
 namespace osmscout {
 
@@ -73,7 +73,7 @@ namespace osmscout {
         // no code
       }
 
-      CacheEntry(const K& key)
+      explicit CacheEntry(const K& key)
       : key(key)
       {
         // no code
@@ -96,10 +96,7 @@ namespace osmscout {
     class ValueSizer
     {
     public:
-      virtual ~ValueSizer()
-      {
-        // no code
-      }
+      virtual ~ValueSizer() = default;
 
       virtual size_t GetSize(const V& value) const = 0;
     };
@@ -109,11 +106,11 @@ namespace osmscout {
     typedef std::unordered_map<K,typename OrderList::iterator> Map;
 
   private:
-    size_t    size;
-    size_t    maxSize;
-    OrderList order;
-    Map       map;
-    CacheRef  previousEntry;
+    size_t    size;          //<! Current size fo the cache
+    size_t    maxSize;       //<! Maximum size of the cache
+    OrderList order;         //<! Order list (by cache access) of cache entries for least recently used cache flush
+    Map       map;           //<! Key=>Value map
+    CacheRef  previousEntry; //<! Reference to the last access cache entry
 
   private:
 
@@ -147,7 +144,7 @@ namespace osmscout {
     /**
      Create a new cache object with the given max size.
       */
-    Cache(size_t maxSize)
+    explicit Cache(size_t maxSize)
      : size(0),
        maxSize(maxSize)
     {
@@ -180,6 +177,7 @@ namespace osmscout {
         return false;
       }
 
+      // Cached cache access
       if (previousEntry!=order.end() &&
           previousEntry->key==key) {
         reference=previousEntry;
@@ -308,7 +306,7 @@ namespace osmscout {
       */
     void DumpStatistics(const char* cacheName, const ValueSizer& sizer)
     {
-      std::cout << cacheName << " entries: " << size << ", memory " << GetMemory(sizer) << std::endl;
+      log.Debug() << cacheName << " entries: " << size << ", memory " << GetMemory(sizer);
     }
   };
 }

@@ -1,12 +1,4 @@
-if(NOT PROTOBUF_FOUND)
-	message(SEND_ERROR "protobuf is required for import library")
-endif()
-if(NOT ZLIB_FOUND)
-	message(SEND_ERROR "zlib is required for import library")
-endif()
-if(MSVC AND NOT (MSVC_VERSION GREATER 1800))
-	message(SEND_ERROR "Microsoft Visual Studio 2015+ is required for import library")
-endif()
+set(OSMSCOUT_BUILD_IMPORT ON CACHE INTERNAL "" FORCE)
 
 set(HEADER_FILES
     #include/osmscout/import/pbf/fileformat.pb.h
@@ -15,6 +7,7 @@ set(HEADER_FILES
     include/osmscout/import/GenAreaNodeIndex.h
     include/osmscout/import/GenAreaWayIndex.h
     include/osmscout/import/GenCoordDat.h
+    include/osmscout/import/GenCoverageIndex.h
     include/osmscout/import/GenIntersectionIndex.h
     include/osmscout/import/GenLocationIndex.h
     include/osmscout/import/GenMergeAreas.h
@@ -28,18 +21,15 @@ set(HEADER_FILES
     include/osmscout/import/GenRawWayIndex.h
     include/osmscout/import/GenRelAreaDat.h
     include/osmscout/import/GenRouteDat.h
-    #include/osmscout/import/GenTextIndex.h
     include/osmscout/import/GenTypeDat.h
     include/osmscout/import/GenWaterIndex.h
     include/osmscout/import/GenWayAreaDat.h
     include/osmscout/import/GenWayWayDat.h
     include/osmscout/import/Import.h
-	include/osmscout/import/ImportErrorReporter.h
+    include/osmscout/import/ImportErrorReporter.h
     include/osmscout/import/MergeAreaData.h
     include/osmscout/import/Preprocess.h
     include/osmscout/import/Preprocessor.h
-    include/osmscout/import/PreprocessOSM.h
-    include/osmscout/import/PreprocessPBF.h
     include/osmscout/import/PreprocessPoly.h
     include/osmscout/import/RawCoastline.h
     include/osmscout/import/RawCoord.h
@@ -48,6 +38,8 @@ set(HEADER_FILES
     include/osmscout/import/RawRelIndexedDataFile.h
     include/osmscout/import/RawWay.h
     include/osmscout/import/RawWayIndexedDataFile.h
+    include/osmscout/import/ShapeFileScanner.h
+    include/osmscout/import/WaterIndexProcessor.h
     include/osmscout/import/SortDat.h
     include/osmscout/import/SortNodeDat.h
     include/osmscout/import/SortWayDat.h
@@ -63,6 +55,7 @@ set(SOURCE_FILES
     src/osmscout/import/GenAreaNodeIndex.cpp
     src/osmscout/import/GenAreaWayIndex.cpp
     src/osmscout/import/GenCoordDat.cpp
+    src/osmscout/import/GenCoverageIndex.cpp
     src/osmscout/import/GenIntersectionIndex.cpp
     src/osmscout/import/GenLocationIndex.cpp
     src/osmscout/import/GenMergeAreas.cpp
@@ -76,18 +69,15 @@ set(SOURCE_FILES
     src/osmscout/import/GenRawWayIndex.cpp
     src/osmscout/import/GenRelAreaDat.cpp
     src/osmscout/import/GenRouteDat.cpp
-    #src/osmscout/import/GenTextIndex.cpp
     src/osmscout/import/GenTypeDat.cpp
     src/osmscout/import/GenWaterIndex.cpp
     src/osmscout/import/GenWayAreaDat.cpp
     src/osmscout/import/GenWayWayDat.cpp
     src/osmscout/import/Import.cpp
-	src/osmscout/import/ImportErrorReporter.cpp
+    src/osmscout/import/ImportErrorReporter.cpp
     src/osmscout/import/MergeAreaData.cpp
     src/osmscout/import/Preprocess.cpp
     src/osmscout/import/Preprocessor.cpp
-    src/osmscout/import/PreprocessOSM.cpp
-    src/osmscout/import/PreprocessPBF.cpp
     src/osmscout/import/PreprocessPoly.cpp
     src/osmscout/import/RawCoastline.cpp
     src/osmscout/import/RawCoord.cpp
@@ -96,6 +86,8 @@ set(SOURCE_FILES
     src/osmscout/import/RawRelIndexedDataFile.cpp
     src/osmscout/import/RawWay.cpp
     src/osmscout/import/RawWayIndexedDataFile.cpp
+    src/osmscout/import/ShapeFileScanner.cpp
+    src/osmscout/import/WaterIndexProcessor.cpp
     src/osmscout/import/SortDat.cpp
     src/osmscout/import/SortNodeDat.cpp
     src/osmscout/import/SortWayDat.cpp
@@ -111,73 +103,105 @@ if(LIBXML2_FOUND)
     list(APPEND SOURCE_FILES src/osmscout/import/PreprocessOSM.cpp)
 endif()
 
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout/import/pbf src/protobuf/fileformat.proto src/protobuf/osmformat.proto)
+if (PROTOBUF_FOUND)
+  protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout/import/pbf src/protobuf/fileformat.proto src/protobuf/osmformat.proto)
+    list(APPEND HEADER_FILES include/osmscout/import/PreprocessPBF.h)
+    list(APPEND SOURCE_FILES src/osmscout/import/PreprocessPBF.cpp)
+    list(APPEND HEADER_FILES ${PROTO_HDRS})
+    list(APPEND SOURCE_FILES ${PROTO_SRCS})
+endif()
 
-add_library(osmscout_import ${SOURCE_FILES} ${HEADER_FILES} ${PROTO_SRCS} ${PROTO_HDRS})
-set_property(TARGET osmscout_import PROPERTY CXX_STANDARD 11)
+if(APPLE)
+  set(THE_TARGET_NAME "OSMScoutImport")
+else()
+  set(THE_TARGET_NAME "osmscout_import")
+endif()
+
+if(IOS)
+  add_library(${THE_TARGET_NAME} STATIC ${SOURCE_FILES} ${HEADER_FILES})
+else()
+  add_library(${THE_TARGET_NAME} ${SOURCE_FILES} ${HEADER_FILES})
+endif()
+
+set_property(TARGET ${THE_TARGET_NAME} PROPERTY CXX_STANDARD 11)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout/ImportFeatures.h.cmake ${OSMSCOUT_BASE_DIR_BUILD}/include/osmscout/ImportFeatures.h)
-create_private_config("${CMAKE_CURRENT_BINARY_DIR}/include/osmscout/private/Config.h" "osmscout-import")
-target_include_directories(osmscout_import PRIVATE
+create_private_config("${CMAKE_CURRENT_BINARY_DIR}/include/osmscout/private/Config.h" "${THE_TARGET_NAME}")
+
+target_include_directories(${THE_TARGET_NAME} PRIVATE
 		include
 		include/osmscout/import/pbf
 		${CMAKE_CURRENT_BINARY_DIR}/include
 		${OSMSCOUT_BASE_DIR_SOURCE}/libosmscout/include
-		${ZLIB_INCLUDE_DIRS}
-		${PROTOBUF_INCLUDE_DIRS})
-target_link_libraries(osmscout_import
-		osmscout
-		${PROTOBUF_LIBRARIES})
+		)
 
-if (LIBLZMA_FOUND AND ICONV_FOUND)
-  target_link_libraries(osmscout_import
-               ${LIBXML2_LIBRARIES}
-               ${ZLIB_LIBRARIES}
-               ${ICONV_LIBRARIES}
-               ${LIBLZMA_LIBRARIES}
-               )
-elseif (ICONV_FOUND)
-  target_link_libraries(osmscout_import
-    ${ZLIB_LIBRARIES}
-    ${ICONV_LIBRARIES}
-    )
-elseif (LIBLZMA_FOUND)
-  target_link_libraries(osmscout_import
-    ${ZLIB_LIBRARIES}
-    ${LIBLZMA_LIBRARIES}
-    )    
+if(APPLE)
+  target_link_libraries(${THE_TARGET_NAME} OSMScout)
 else()
-  target_link_libraries(osmscout_import
-    ${ZLIB_LIBRARIES}
-    )    
+  target_link_libraries(${THE_TARGET_NAME} osmscout)
+endif()
+
+if(ZLIB_FOUND AND ICONV_FOUND AND LIBXML2_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${LIBXML2_INCLUDE_DIR})
+    target_link_libraries(${THE_TARGET_NAME} ${LIBXML2_LIBRARIES})
+endif()
+
+if (PROTOBUF_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${PROTOBUF_INCLUDE_DIRS})
+    target_link_libraries(${THE_TARGET_NAME} ${PROTOBUF_LIBRARIES})
+endif()
+
+if (ICONV_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${ICONV_INCLUDE_DIRS})
+    target_link_libraries(${THE_TARGET_NAME} ${ICONV_LIBRARIES})
+endif()
+
+if (LIBLZMA_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${LIBLZMA_INCLUDE_DIRS})
+  target_link_libraries(${THE_TARGET_NAME} ${LIBLZMA_LIBRARIES})
+endif()
+
+if (ZLIB_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${ZLIB_INCLUDE_DIRS})
+  target_link_libraries(${THE_TARGET_NAME} ${ZLIB_LIBRARIES})
 endif()
 
 if(MARISA_FOUND)
-    target_include_directories(osmscout_import PRIVATE ${MARISA_INCLUDE_DIRS})
-    if (MARISA_LIBRARIES_DEBUG)
-        target_link_libraries(osmscout_import optimized ${MARISA_LIBRARIES} debug ${MARISA_LIBRARIES_DEBUG})
-    else()
-        target_link_libraries(osmscout_import ${MARISA_LIBRARIES})
-    endif()
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${MARISA_INCLUDE_DIRS})
+    target_link_libraries(${THE_TARGET_NAME} ${MARISA_LIBRARIES})
 endif()
 
-if(LIBXML2_FOUND)
-    target_include_directories(osmscout_import PRIVATE ${LIBXML2_INCLUDE_DIR})
-    target_link_libraries(osmscout_import ${LIBXML2_LIBRARIES})
-endif()
 if(WIN32)
-  target_link_libraries(osmscout_import Ws2_32.lib)
-  target_compile_definitions(osmscout_import PRIVATE -DPROTOBUF_USE_DLLS)
-endif()
-if(LIBXML2_FOUND)
-	target_compile_definitions(osmscout_import PRIVATE -DOSMSCOUT_IMPORT_EXPORT_SYMBOLS -DHAVE_LIB_XML ${LIBXML2_DEFINITIONS})
-else()
-	target_compile_definitions(osmscout_import PRIVATE -DOSMSCOUT_IMPORT_EXPORT_SYMBOLS)
+  target_link_libraries(${THE_TARGET_NAME} Ws2_32.lib)
+  target_compile_definitions(${THE_TARGET_NAME} PRIVATE -DPROTOBUF_USE_DLLS)
 endif()
 
-install(TARGETS osmscout_import
+#if(${IOS})
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fembed-bitcode")
+#endif()
+
+if(APPLE)
+set_target_properties(${THE_TARGET_NAME} PROPERTIES
+  FRAMEWORK TRUE
+  FRAMEWORK_VERSION C
+  MACOSX_FRAMEWORK_IDENTIFIER com.cmake.dynamicFramework
+  #MACOSX_FRAMEWORK_INFO_PLIST Info.plist
+  PUBLIC_HEADER     "${HEADER_FILES}"
+  CODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer"
+)
+endif()
+
+
+if(LIBXML2_FOUND)
+    target_compile_definitions(${THE_TARGET_NAME} PRIVATE -DOSMSCOUT_IMPORT_EXPORT_SYMBOLS -DHAVE_LIB_XML ${LIBXML2_DEFINITIONS})
+else()
+    target_compile_definitions(${THE_TARGET_NAME} PRIVATE -DOSMSCOUT_IMPORT_EXPORT_SYMBOLS)
+endif()
+
+install(TARGETS ${THE_TARGET_NAME}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)
+        ARCHIVE DESTINATION lib
+        FRAMEWORK DESTINATION lib)
 if(MARISA_FOUND)
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "private/Config.h" EXCLUDE)
 else()

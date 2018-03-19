@@ -23,7 +23,6 @@
 // For memcpy
 #include <string.h>
 
-#include <iostream>
 #include <vector>
 
 #include <osmscout/private/CoreImportExport.h>
@@ -32,6 +31,7 @@
 #include <osmscout/Pixel.h>
 
 #include <osmscout/util/Geometry.h>
+#include <osmscout/util/Logger.h>
 #include <osmscout/util/Projection.h>
 
 #include <osmscout/system/Assert.h>
@@ -42,7 +42,7 @@ namespace osmscout {
   /**
    * \ingroup Geometry
    */
-  class OSMSCOUT_API TransPolygon
+  class OSMSCOUT_API TransPolygon CLASS_FINAL
   {
   private:
     size_t  pointsSize;
@@ -72,7 +72,8 @@ namespace osmscout {
     };
 
   private:
-    struct TransPointRef{
+    struct TransPointRef
+    {
       TransPoint *p;
 
       inline double GetLat() const
@@ -96,15 +97,18 @@ namespace osmscout {
 
   private:
     void TransformGeoToPixel(const Projection& projection,
+                             const std::vector<GeoCoord>& nodes);
+    void TransformGeoToPixel(const Projection& projection,
                              const std::vector<Point>& nodes);
     void DropSimilarPoints(double optimizeErrorTolerance);
     void DropRedundantPointsFast(double optimizeErrorTolerance);
     void DropRedundantPointsDouglasPeucker(double optimizeErrorTolerance, bool isArea);
+    void DropEqualPoints();
     void EnsureSimple(bool isArea);
 
   public:
     TransPolygon();
-    virtual ~TransPolygon();
+    ~TransPolygon();
 
     inline bool IsEmpty() const
     {
@@ -128,223 +132,74 @@ namespace osmscout {
 
     void TransformArea(const Projection& projection,
                        OptimizeMethod optimize,
+                       const std::vector<GeoCoord>& nodes,
+                       double optimizeErrorTolerance,
+                       OutputConstraint constraint=noConstraint);
+    void TransformArea(const Projection& projection,
+                       OptimizeMethod optimize,
                        const std::vector<Point>& nodes,
                        double optimizeErrorTolerance,
                        OutputConstraint constraint=noConstraint);
 
     void TransformWay(const Projection& projection,
                       OptimizeMethod optimize,
+                      const std::vector<GeoCoord>& nodes,
+                      double optimizeErrorTolerance,
+                      OutputConstraint constraint=noConstraint);
+    void TransformWay(const Projection& projection,
+                      OptimizeMethod optimize,
                       const std::vector<Point>& nodes,
                       double optimizeErrorTolerance,
                       OutputConstraint constraint=noConstraint);
 
+    void TransformBoundingBox(const Projection& projection,
+                              OptimizeMethod optimize,
+                              const GeoBox& boundingBox,
+                              double optimizeErrorTolerance,
+                              OutputConstraint constraint=noConstraint);
+
     bool GetBoundingBox(double& xmin, double& ymin,
                         double& xmax, double& ymax) const;
-
-    bool GetCenterPixel(double& cx,
-                        double& cy) const;
   };
 
   /**
    * \ingroup Geometry
    */
-  class OSMSCOUT_API CoordBuffer
-  {
-  public:
-    virtual ~CoordBuffer();
-
-    virtual void Reset() = 0;
-    virtual size_t PushCoord(double x, double y) = 0;
-    virtual bool GenerateParallelWay(size_t orgStart,
-                                     size_t orgEnd,
-                                     double offset,
-                                     size_t& start,
-                                     size_t& end) = 0;
-    virtual void ScanConvertLine(size_t start,
-                                 size_t end,
-                                 std::vector<ScanCell>& cells) = 0;
-  };
-
-  /**
-   * \ingroup Geometry
-   */
-  template<class P>
-  class CoordBufferImpl : public CoordBuffer
+  class OSMSCOUT_API CoordBuffer CLASS_FINAL
   {
   private:
-    size_t bufferSize;
-    size_t usedPoints;
+    size_t   bufferSize;
+    size_t   usedPoints;
 
   public:
-    P*     buffer;
+    Vertex2D *buffer;
 
   public:
-    CoordBufferImpl();
-    ~CoordBufferImpl();
+    CoordBuffer();
+    ~CoordBuffer();
 
     void Reset();
     size_t PushCoord(double x, double y);
-
     bool GenerateParallelWay(size_t orgStart,
                              size_t orgEnd,
                              double offset,
                              size_t& start,
                              size_t& end);
-
-    void ScanConvertLine(size_t start,
-                         size_t end,
-                         std::vector<ScanCell>& cells);
   };
 
-  template<class P>
-  CoordBufferImpl<P>::CoordBufferImpl()
-  : bufferSize(131072),
-    usedPoints(0),
-    buffer(new P[bufferSize])
-  {
-    // no code
-  }
-
-  template<class P>
-  CoordBufferImpl<P>::~CoordBufferImpl()
-  {
-    delete [] buffer;
-  }
-
-  template<class P>
-  void CoordBufferImpl<P>::Reset()
-  {
-    usedPoints=0;
-  }
-
-  template<class P>
-  size_t CoordBufferImpl<P>::PushCoord(double x, double y)
-  {
-    if (usedPoints>=bufferSize)
-    {
-      bufferSize=bufferSize*2;
-
-      P* newBuffer=new P[bufferSize];
-
-      memcpy(newBuffer,buffer,sizeof(P)*usedPoints);
-
-      std::cout << "*** Buffer reallocation: " << bufferSize << std::endl;
-
-      delete [] buffer;
-
-      buffer=newBuffer;
-    }
-
-    buffer[usedPoints].Set(x,y);
-
-    return usedPoints++;
-  }
-
-  template<class P>
-  bool CoordBufferImpl<P>::GenerateParallelWay(size_t orgStart,
-                                               size_t orgEnd,
-                                               double offset,
-                                               size_t& start,
-                                               size_t& end)
-  {
-    if (orgStart+1>orgEnd) {
-      // To avoid "not initialized" warnings
-      return false;
-    }
-
-    double oax,oay;
-    double obx,oby;
-
-
-    Normalize(buffer[orgStart].GetY()-buffer[orgStart+1].GetY(),
-              buffer[orgStart+1].GetX()-buffer[orgStart].GetX(),
-              oax, oay);
-
-    oax=offset*oax;
-    oay=offset*oay;
-
-    start=PushCoord(buffer[orgStart].GetX()+oax,
-                    buffer[orgStart].GetY()+oay);
-
-    for (size_t i=orgStart+1; i<orgEnd; i++) {
-      Normalize(buffer[i-1].GetY()-buffer[i].GetY(),
-                buffer[i].GetX()-buffer[i-1].GetX(),
-                oax, oay);
-
-      oax=offset*oax;
-      oay=offset*oay;
-
-      Normalize(buffer[i].GetY()-buffer[i+1].GetY(),
-                buffer[i+1].GetX()-buffer[i].GetX(),
-                obx, oby);
-
-      obx=offset*obx;
-      oby=offset*oby;
-
-
-      double det1=Det(obx-oax,
-                      oby-oay,
-                      buffer[i+1].GetX()-buffer[i].GetX(),
-                      buffer[i+1].GetY()-buffer[i].GetY());
-      double det2=Det(buffer[i].GetX()-buffer[i-1].GetX(),
-                      buffer[i].GetY()-buffer[i-1].GetY(),
-                      buffer[i+1].GetX()-buffer[i].GetX(),
-                      buffer[i+1].GetY()-buffer[i].GetY());
-
-      if (fabs(det2)>0.0001) {
-        PushCoord(buffer[i].GetX()+oax+det1/det2*(buffer[i].GetX()-buffer[i-1].GetX()),
-                  buffer[i].GetY()+oay+det1/det2*(buffer[i].GetY()-buffer[i-1].GetY()));
-      }
-      else {
-        PushCoord(buffer[i].GetX()+oax,
-                  buffer[i].GetY()+oay);
-      }
-    }
-
-    Normalize(buffer[orgEnd-1].GetY()-buffer[orgEnd].GetY(),
-              buffer[orgEnd].GetX()-buffer[orgEnd-1].GetX(),
-              oax, oay);
-
-    oax=offset*oax;
-    oay=offset*oay;
-
-    end=PushCoord(buffer[orgEnd].GetX()+oax,
-                  buffer[orgEnd].GetY()+oay);
-
-    return true;
-  }
-
-  template<class P>
-  void CoordBufferImpl<P>::ScanConvertLine(size_t start,
-                                           size_t end,
-                                           std::vector<ScanCell>& cells)
-  {
-    for (size_t i=start; i<end; i++) {
-      size_t j=i+1;
-
-      int x1=int(buffer[i].GetX());
-      int x2=int(buffer[j].GetX());
-      int y1=int(buffer[i].GetY());
-      int y2=int(buffer[j].GetY());
-
-      osmscout::ScanConvertLine(x1,y1,
-                                x2,y2,
-                                cells);
-    }
-  }
 
   /**
    * \ingroup Geometry
    */
-  class OSMSCOUT_API TransBuffer
+  class OSMSCOUT_API TransBuffer CLASS_FINAL
   {
   public:
     TransPolygon transPolygon;
-    CoordBuffer *buffer;
+    CoordBuffer  *buffer;
 
   public:
-    TransBuffer(CoordBuffer* buffer);
-    virtual ~TransBuffer();
+    explicit TransBuffer(CoordBuffer* buffer);
+    ~TransBuffer();
 
     void Reset();
 

@@ -33,7 +33,7 @@ namespace osmscout {
    * A path is defined by the way to be used and the node id of a node on this way
    * which is the target to reach.
    */
-  class OSMSCOUT_API Path
+  class OSMSCOUT_API Path CLASS_FINAL
   {
   private:
     ObjectFileRef object;
@@ -41,13 +41,12 @@ namespace osmscout {
     bool          traversable;
 
   public:
-    Path(ObjectFileRef Object,
+    Path(const ObjectFileRef& Object,
          size_t targetNodeIndex);
-    Path(ObjectFileRef object,
+    Path(const ObjectFileRef& object,
          size_t targetNodeIndex,
          bool traversable);
     Path(const Path& other);
-    virtual ~Path();
 
     inline ObjectFileRef GetObject() const
     {

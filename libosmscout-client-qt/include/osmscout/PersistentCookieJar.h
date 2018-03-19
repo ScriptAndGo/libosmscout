@@ -52,10 +52,12 @@
 #include <QNetworkCookie>
 
 #include <osmscout/private/ClientQtImportExport.h>
+#include <osmscout/OSMScoutQt.h>
 
 class OSMSCOUT_CLIENT_QT_API PersistentCookieJar : public QNetworkCookieJar {
 public:
-    PersistentCookieJar(QObject *parent = Q_NULLPTR) : QNetworkCookieJar(parent) { load(); }
+    PersistentCookieJar(SettingsRef settings, QObject *parent = Q_NULLPTR) :
+        QNetworkCookieJar(parent), settings(settings) { load(); }
     virtual ~PersistentCookieJar() { save(); }
 
     virtual QList<QNetworkCookie> cookiesForUrl(const QUrl &url) const
@@ -82,19 +84,19 @@ private:
                 data.append("\n");
             }
         }
-        QSettings settings;
-        settings.setValue("Cookies",data);
+
+        settings->SetCookieData(data);
     }
 
     void load()
     {
         QMutexLocker lock(&mutex);
-        QSettings settings;
-        QByteArray data = settings.value("Cookies").toByteArray();
+        const QByteArray data = settings->GetCookieData();
         setAllCookies(QNetworkCookie::parseCookies(data));
     }
 
     mutable QMutex mutex;
+    SettingsRef settings;
 };
 
 #endif	/* PERSISTENTCOOKIEJAR_H */

@@ -17,12 +17,18 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#include <iostream>
+
 // Qt includes
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickView>
 #include <QApplication>
 #include <QFileInfo>
+#include <QQmlContext>
+
+// OSM Scout library singleton
+#include <osmscout/OSMScoutQt.h>
 
 // Custom QML objects
 #include <osmscout/MapWidget.h>
@@ -38,10 +44,11 @@
 #include "Theme.h"
 
 #include "AppSettings.h"
+#include "PositionSimulator.h"
 
 #include <osmscout/util/Logger.h>
-
-Q_DECLARE_METATYPE(osmscout::TileRef)
+#include <osmscout/util/CmdLineParsing.h>
+#include <osmscout/GPXFeatures.h>
 
 static QObject *ThemeProvider(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
@@ -58,19 +65,42 @@ static QObject *ThemeProvider(QQmlEngine *engine, QJSEngine *scriptEngine)
 #define WARNING 2
 #define ERROR   1
 
-static int LogEnv(QString env)
+static int LogEnv(const QString& env)
 {
-  if (env.toUpper()=="DEBUG"){
+  if (env.toUpper()=="DEBUG") {
     return DEBUG;
   }
-  if (env.toUpper()=="INFO"){
+  else if (env.toUpper()=="INFO") {
     return INFO;
   }
-  if (env.toUpper()=="ERROR"){
+  else if (env.toUpper()=="WARNING") {
+    return INFO;
+  }
+  else if (env.toUpper()=="ERROR") {
     return ERROR;
   }
+
   return WARNING;
 }
+
+struct Arguments {
+  bool help;
+  QString databaseDirectory;
+  QString style;
+  QString iconDirectory;
+  QString translationDir;
+
+  QString track;
+  bool simulateNavigation;
+
+  Arguments() :
+      help(false),
+      databaseDirectory("."),
+      style("stylesheets/standard.oss"),
+      iconDirectory("icons"),
+      simulateNavigation(false)
+  {}
+};
 
 int main(int argc, char* argv[])
 {
@@ -83,111 +113,159 @@ int main(int argc, char* argv[])
 
   app.setOrganizationName("libosmscout");
   app.setOrganizationDomain("libosmscout.sf.net");
-  app.setApplicationName("OSMScout");
+  app.setApplicationName("OSMScout2");
 
-  qRegisterMetaType<RenderMapRequest>();
-  qRegisterMetaType<DatabaseLoadedResponse>();
-  qRegisterMetaType<osmscout::TileRef>();
+  // register OSMScout library QML types
+  OSMScoutQt::RegisterQmlTypes();
 
-  qmlRegisterType<MapWidget>("net.sf.libosmscout.map", 1, 0, "Map");
-  qmlRegisterType<LocationEntry>("net.sf.libosmscout.map", 1, 0, "LocationEntry");
-  qmlRegisterType<LocationListModel>("net.sf.libosmscout.map", 1, 0, "LocationListModel");
-  qmlRegisterType<RouteStep>("net.sf.libosmscout.map", 1, 0, "RouteStep");
-  qmlRegisterType<RoutingListModel>("net.sf.libosmscout.map", 1, 0, "RoutingListModel");
-  qmlRegisterType<QmlSettings>("net.sf.libosmscout.map", 1, 0, "Settings");
+  // register application QML types
   qmlRegisterType<AppSettings>("net.sf.libosmscout.map", 1, 0, "AppSettings");
-  qmlRegisterType<AvailableMapsModel>("net.sf.libosmscout.map", 1, 0, "AvailableMapsModel");
-  qmlRegisterType<MapDownloadsModel>("net.sf.libosmscout.map", 1, 0, "MapDownloadsModel");
-
   qmlRegisterSingletonType<Theme>("net.sf.libosmscout.map", 1, 0, "Theme", ThemeProvider);
 
   // init logger by system system variable
-  int logEnv=LogEnv(QProcessEnvironment::systemEnvironment().value("OSMSCOUT_LOG", "WARNING"));
+  QString logLevelName=QProcessEnvironment::systemEnvironment().value("OSMSCOUT_LOG", "WARNING");
+
+  std::cout << "Setting libosmscout logging to level: " << logLevelName.toStdString() << std::endl;
+
+  int logEnv=LogEnv(logLevelName);
+
   osmscout::log.Debug(logEnv>=DEBUG);
   osmscout::log.Info(logEnv>=INFO);
   osmscout::log.Warn(logEnv>=WARNING);
   osmscout::log.Error(logEnv>=ERROR);
 
-  SettingsRef settings=std::make_shared<Settings>();
-  // load online tile providers
-  settings->loadOnlineTileProviders(
-    ":/resources/online-tile-providers.json");
-  settings->loadMapProviders(
-    ":/resources/map-providers.json");
-
-  QThread thread;
+  OSMScoutQtBuilder builder=OSMScoutQt::NewInstance();
 
   // setup paths
-  QString documentsLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-  QString cacheLocation = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
   QStringList cmdLineArgs = QApplication::arguments();
 
+  osmscout::CmdLineParser   argParser("OSMScout2",
+                                      argc,argv);
+  std::vector<std::string>  helpArgs{"h","help"};
+  Arguments                 args;
+  argParser.AddOption(osmscout::CmdLineFlag([&args](const bool& value) {
+                        args.help=value;
+                      }),
+                      helpArgs,
+                      "Return argument help",
+                      true);
+
+  argParser.AddOption(osmscout::CmdLineStringOption([&args](const std::string& value) {
+                        args.iconDirectory=QString::fromStdString(value);
+                      }),
+                      "icons",
+                      "Icon directory",
+                      false);
+
+  argParser.AddOption(osmscout::CmdLineStringOption([&args](const std::string& value) {
+                        args.translationDir=QString::fromStdString(value);
+                      }),
+                      "translations",
+                      "Directory with translation files (*.qm)",
+                      false);
+
+#ifdef OSMSCOUT_GPX_HAVE_LIB_XML
+  argParser.AddOption(osmscout::CmdLineStringOption([&args](const std::string& value) {
+                        args.track=QString::fromStdString(value);
+                        args.simulateNavigation=true;
+                      }),
+                      "simulate-track",
+                      "GPX file for navigation simulation",
+                      false);
+#endif
+
+  argParser.AddPositional(osmscout::CmdLineStringOption([&args](const std::string& value) {
+                            args.databaseDirectory=QString::fromStdString(value);
+                          }),
+                          "databaseDir",
+                          "Database directory");
+  argParser.AddPositional(osmscout::CmdLineStringOption([&args](const std::string& value) {
+                            args.style=QString::fromStdString(value);
+                          }),
+                          "stylesheet",
+                          "Map stylesheet");
+
+  osmscout::CmdLineParseResult argResult=argParser.Parse();
+  if (argResult.HasError()) {
+    std::cerr << "ERROR: " << argResult.GetErrorDescription() << std::endl;
+    std::cout << argParser.GetHelp() << std::endl;
+    return 1;
+  }
+  else if (args.help) {
+    std::cout << argParser.GetHelp() << std::endl;
+    return 0;
+  }
+
+  // install translator
+  QTranslator translator;
+  QLocale locale;
+  QString translationDir;
+  if (args.translationDir.isEmpty()) {
+    // translations are installed to <PREFIX>/share/libosmscout/OSMScout2/translations
+    // Qt lookup app data (on Linux) in directories "~/.local/share/<APPNAME>", "/usr/local/share/<APPNAME>", "/usr/share/<APPNAME>"
+    // when APPNAME is combination of <organisation>/<app name>
+    translationDir = QStandardPaths::locate(QStandardPaths::DataLocation, "translations",
+                                            QStandardPaths::LocateDirectory);
+  }else{
+    translationDir = args.translationDir;
+  }
+  if (translator.load(locale.name(), translationDir)) {
+    qDebug() << "Install translator for locale " << locale << "/" << locale.name();
+    app.installTranslator(&translator);
+  }else{
+    qWarning() << "Can't load translator for locale" << locale << "/" << locale.name() <<
+               "(" << translationDir << ")";
+  }
+
   QStringList mapLookupDirectories;
-  if (cmdLineArgs.size() > 1){
-    mapLookupDirectories << cmdLineArgs.at(1);
-  }
-  else{
-    mapLookupDirectories << QDir::currentPath();
-    mapLookupDirectories << QDir(documentsLocation).filePath("Maps");
-  }
 
-  if (cmdLineArgs.size() > 2){
-    QFileInfo stylesheetFile(cmdLineArgs.at(2));
-    settings->SetStyleSheetDirectory(stylesheetFile.dir().path());
-    settings->SetStyleSheetFile(stylesheetFile.fileName());
-  }
+  mapLookupDirectories << args.databaseDirectory;
 
-  QString iconDirectory;
-  if (cmdLineArgs.size() > 3){
-    iconDirectory = cmdLineArgs.at(3);
-  }
-  else {
-    if (cmdLineArgs.size() > 1) {
-      iconDirectory = QDir(cmdLineArgs.at(1)).filePath("icons");
-    }
-    else {
-      iconDirectory = "icons";
+  QDir dir(args.databaseDirectory);
+
+  if (dir.cdUp()) {
+    if (dir.cd("world")) {
+      builder.WithBasemapLookupDirectory(dir.absolutePath());
     }
   }
-/*
-  if (!DBThread::InitializeTiledInstance(
-          mapLookupDirectories,
-          iconDirectory,
-          renderingSettings,
-          cacheLocation + QDir::separator() + "OSMScoutTileCache",
-          / onlineTileCacheSize  / 100,
-          / offlineTileCacheSize / 200
-      )) {
-    std::cerr << "Cannot initialize DBThread" << std::endl;
-    return 1;
+  if (args.simulateNavigation){
+    QFileInfo gpxFile(args.track);
+    if (!gpxFile.exists()){
+      std::cerr << args.track.toStdString() << " dont exists" << std::endl;
+      return 1;
+    }
+    qmlRegisterType<PositionSimulator>("net.sf.libosmscout.map", 1, 0, "PositionSimulator");
   }
-*/
-  if (!DBThread::InitializePlaneInstance(
-          mapLookupDirectories,
-          iconDirectory,
-          settings
-      )) {
-    std::cerr << "Cannot initialize DBThread" << std::endl;
+
+  QFileInfo stylesheetFile(args.style);
+
+  builder
+    .WithStyleSheetDirectory(stylesheetFile.dir().path())
+    .WithStyleSheetFile(stylesheetFile.fileName())
+    .WithIconDirectory(args.iconDirectory)
+    .WithMapLookupDirectories(mapLookupDirectories)
+    .WithOnlineTileProviders(":/resources/online-tile-providers.json")
+    .WithMapProviders(":/resources/map-providers.json")
+    .WithUserAgent("OSMScout2DemoApp", "v?");
+
+  if (!builder.Init()){
+    std::cerr << "Cannot initialize OSMScout library" << std::endl;
     return 1;
   }
 
-  DBThread* dbThread=DBThread::GetInstance();
+  {
+    if (args.simulateNavigation){
+      QQmlApplicationEngine window;
+      window.rootContext()->setContextProperty("PositionSimulationTrack", args.track);
+      window.load(QUrl("qrc:/qml/NavigationSimulation.qml"));
+      result = app.exec();
+    }else{
+      QQmlApplicationEngine window(QUrl("qrc:/qml/main.qml"));
+      result = app.exec();
+    }
+  }
 
-  dbThread->connect(&thread, SIGNAL(started()), SLOT(Initialize()));
-  dbThread->connect(&thread, SIGNAL(finished()), SLOT(Finalize()));
-
-  dbThread->moveToThread(&thread);
-
-  QQmlApplicationEngine window(QUrl("qrc:/qml/main.qml"));
-
-  thread.start();
-
-  result=app.exec();
-
-  thread.quit();
-  thread.wait();
-
-  DBThread::FreeInstance();
+  OSMScoutQt::FreeInstance();
 
   return result;
 }

@@ -30,24 +30,24 @@ namespace osmscout {
   class NodeLocationProcessorFilter : public SortDataGenerator<Node>::ProcessingFilter
   {
   private:
-    FileWriter                 writer;
-    uint32_t                   overallDataCount;
-    NameFeatureValueReader     *nameReader;
-    LocationFeatureValueReader *locationReader;
-    AddressFeatureValueReader  *addressReader;
+    FileWriter                   writer;
+    uint32_t                     overallDataCount;
+    NameFeatureValueReader       *nameReader;
+    LocationFeatureValueReader   *locationReader;
+    AddressFeatureValueReader    *addressReader;
     PostalCodeFeatureValueReader *postalCodeReader;
 
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
     bool Process(Progress& progress,
                  const FileOffset& offset,
                  Node& node,
-                 bool& save);
+                 bool& save) override;
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool NodeLocationProcessorFilter::BeforeProcessingStart(const ImportParameter& parameter,
@@ -90,11 +90,11 @@ namespace osmscout {
       bool isPoi=false;
 
       if (node.GetType()->GetIndexAsAddress()) {
-        isAddress=addressValue!=NULL;
+        isAddress=addressValue!=nullptr;
       }
 
       if (node.GetType()->GetIndexAsPOI()) {
-        isPoi=nameValue!=NULL;
+        isPoi=nameValue!=nullptr;
       }
 
       std::string name;
@@ -102,28 +102,40 @@ namespace osmscout {
       std::string address;
       std::string postalCode;
 
-      if (nameValue!=NULL) {
+      if (nameValue!=nullptr) {
         name=nameValue->GetName();
       }
 
-      if (addressValue!=NULL && locationValue!=NULL) {
+      if (addressValue!=nullptr &&
+          locationValue!=nullptr) {
         location=locationValue->GetLocation();
         address=addressValue->GetAddress();
       }
 
-      if (postalCodeValue!=NULL) {
+      if (postalCodeValue!=nullptr) {
         postalCode=postalCodeValue->GetPostalCode();
       }
 
-      if (locationValue!=NULL) {
-        // We do not need the location info here anymore, it is only relevant for
-        // the location index and that one will be build using the here generated
-        // location file.
+      // We only need location info during import up to this point
+      // Thus we delete it now to safe disk space
+      if (locationValue!=nullptr) {
         size_t locationIndex;
 
         if (locationReader->GetIndex(node.GetFeatureValueBuffer(),
-                                     locationIndex)) {
+                                     locationIndex) &&
+          node.GetFeatureValueBuffer().HasFeature(locationIndex)) {
           node.UnsetFeature(locationIndex);
+        }
+      }
+
+      // Same for postal code
+      if (postalCodeValue!=nullptr) {
+        size_t postalCodeIndex;
+
+        if (postalCodeReader->GetIndex(node.GetFeatureValueBuffer(),
+                                       postalCodeIndex) &&
+          node.GetFeatureValueBuffer().HasFeature(postalCodeIndex)) {
+          node.UnsetFeature(postalCodeIndex);
         }
       }
 
@@ -139,6 +151,7 @@ namespace osmscout {
       writer.Write(postalCode);
       writer.Write(location);
       writer.Write(address);
+
       writer.WriteCoord(node.GetCoords());
 
       overallDataCount++;
@@ -157,13 +170,16 @@ namespace osmscout {
                                                        const TypeConfig& /*typeConfig*/)
   {
     delete nameReader;
-    nameReader=NULL;
+    nameReader=nullptr;
 
     delete locationReader;
-    locationReader=NULL;
+    locationReader=nullptr;
 
     delete addressReader;
-    addressReader=NULL;
+    addressReader=nullptr;
+
+    delete postalCodeReader;
+    postalCodeReader=nullptr;
 
     try {
       writer.SetPos(0);
@@ -191,14 +207,14 @@ namespace osmscout {
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
     bool Process(Progress& progress,
                  const FileOffset& offset,
-                 Node& Node,
-                 bool& save);
+                 Node& node,
+                 bool& save) override;
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool NodeTypeIgnoreProcessorFilter::BeforeProcessingStart(const ImportParameter& /*parameter*/,
@@ -216,7 +232,7 @@ namespace osmscout {
                                               Node& node,
                                               bool& save)
   {
-    save=node.GetType()!=NULL &&
+    save=node.GetType()!=nullptr &&
          node.GetType()!=typeInfoIgnore;
 
     if (!save) {
@@ -230,7 +246,7 @@ namespace osmscout {
                                                          Progress& progress,
                                                          const TypeConfig& /*typeConfig*/)
   {
-    progress.Info("Nodes without a type removed: " + NumberToString(removedNodesCount));
+    progress.Info("Nodes without a type removed: " + std::to_string(removedNodesCount));
 
     return true;
   }

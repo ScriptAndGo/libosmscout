@@ -28,7 +28,6 @@
 
 #include <osmscout/util/Geometry.h>
 #include <osmscout/util/StopClock.h>
-#include <osmscout/util/String.h>
 
 #include <osmscout/import/RawNode.h>
 #include <osmscout/import/RawRelation.h>
@@ -86,7 +85,7 @@ namespace osmscout {
         restrictions.restrictions.insert(std::make_pair(restriction->GetTo(),restriction));
       }
 
-      progress.Info(std::string("Read ")+NumberToString(restrictionCount)+" turn restrictions");
+      progress.Info(std::string("Read ")+std::to_string(restrictionCount)+" turn restrictions");
 
       scanner.Close();
     }
@@ -130,7 +129,7 @@ namespace osmscout {
       return false;
     }
 
-    progress.Info(std::string("Wrote back ")+NumberToString(restrictionsSet.size())+" restrictions");
+    progress.Info(std::string("Wrote back ")+std::to_string(restrictionsSet.size())+" restrictions");
 
     return true;
   }
@@ -144,6 +143,7 @@ namespace osmscout {
   {
     uint32_t    wayCount=0;
     size_t      collectedWaysCount=0;
+    size_t      collectedWayNodesCount=0;
     size_t      typesWithWays=0;
     TypeInfoSet currentTypes(types);
 
@@ -174,8 +174,10 @@ namespace osmscout {
       ways[way->GetType()->GetIndex()].push_back(way);
 
       collectedWaysCount++;
+      collectedWayNodesCount+=way->GetNodes().size();
 
-      while (collectedWaysCount>parameter.GetRawWayBlockSize() &&
+      while ((collectedWaysCount>parameter.GetRawWayBlockSize() ||
+              collectedWayNodesCount>parameter.GetRawCoordBlockSize()) &&
              typesWithWays>1) {
         TypeInfoRef victimType;
 
@@ -192,6 +194,9 @@ namespace osmscout {
         assert(victimType);
 
         collectedWaysCount-=ways[victimType->GetIndex()].size();
+        for (auto const &way:ways[victimType->GetIndex()]){
+          collectedWayNodesCount-=way->GetNodes().size();
+        }
         ways[victimType->GetIndex()].clear();
 
         typesWithWays--;
@@ -202,7 +207,7 @@ namespace osmscout {
     // If we are done, remove all successfully collected types from our list of "not yet collected" types.
     types.Remove(currentTypes);
 
-    progress.SetAction("Collected "+NumberToString(collectedWaysCount)+" ways for "+NumberToString(currentTypes.Size())+" types");
+    progress.SetAction("Collected "+std::to_string(collectedWaysCount)+" ways for "+std::to_string(currentTypes.Size())+" types");
 
     return true;
   }
@@ -418,7 +423,7 @@ namespace osmscout {
 
     return true;
   }
-  
+
   bool WayWayDataGenerator::SplitLongWays(Progress& progress,
                      std::list<RawWayRef>& ways,
                      CoordDataFile::ResultMap& coordsMap)
@@ -460,31 +465,31 @@ namespace osmscout {
         continue;
       }
 
-      std::string msg = "Splitting long way " + NumberToString(way->GetId()) +
-        " with " + NumberToString(way->GetNodeCount()) + " nodes";
+      std::string msg = "Splitting long way " + std::to_string(way->GetId()) +
+        " with " + std::to_string(way->GetNodeCount()) + " nodes";
       if (length > 0.0) {
         msg += " and real length " + std::to_string(length) + " km";
       }
       progress.Debug(msg);
-      
+
       double segmentLength=0.0;
       size_t segmentNodeCnt=1;
       RawWayRef segment = std::make_shared<RawWay>();
-      
+
       auto osmIdIt = way->GetNodes().begin();
       auto endIt = way->GetNodes().end();
       auto segmentStart = osmIdIt;
       auto segmentEnd = osmIdIt;
-      
+
       auto prev = coordsMap.find(*osmIdIt);
       // jump to first valid node
       while (prev==coordsMap.end() && osmIdIt != endIt) {
         progress.Error("Cannot resolve node with id "+
-                       NumberToString(*osmIdIt)+
+                       std::to_string(*osmIdIt)+
                        " for way "+
-                       NumberToString(way->GetId())+
+                       std::to_string(way->GetId())+
                        ", skipping");
-        osmIdIt ++;    
+        osmIdIt ++;
         segmentStart = osmIdIt;
         if (osmIdIt != endIt){
           prev = coordsMap.find(*osmIdIt);
@@ -494,7 +499,7 @@ namespace osmscout {
       osmIdIt ++;
       segmentEnd=osmIdIt;
       while (osmIdIt!=endIt) {
-        
+
         if (segment->GetId()==0) {
           segment->SetId(way->GetId());
           segment->SetType(way->GetType(), way->IsArea());
@@ -517,17 +522,17 @@ namespace osmscout {
 
           segment->SetNodes(currentSegmentStart, osmIdIt);
           newWays.push_back(segment);
-          //std::cout << "  - New segment " << segment->GetId() << 
+          //std::cout << "  - New segment " << segment->GetId() <<
           //  " with " << segment->GetNodeCount() << " nodes and real length " << segmentLength << " km" << std::endl;
-          
+
           // skip invalid nodes
           while (prev==coordsMap.end() && osmIdIt != endIt){
             progress.Error("Cannot resolve node with id "+
-                           NumberToString(*osmIdIt)+
+                           std::to_string(*osmIdIt)+
                            " for way "+
-                           NumberToString(way->GetId())+
+                           std::to_string(way->GetId())+
                            ", splitting");
-            osmIdIt ++;    
+            osmIdIt ++;
             segmentStart = osmIdIt;
             if (osmIdIt != endIt){
               prev = coordsMap.find(*osmIdIt);
@@ -541,18 +546,18 @@ namespace osmscout {
         }
         else {
           prev = current;
-          osmIdIt ++;          
+          osmIdIt ++;
           segmentEnd=osmIdIt;
         }
       }
       if (segment->GetId() != 0 && segmentNodeCnt >= 2) {
         segment->SetNodes(segmentStart, segmentEnd);
-        newWays.push_back(segment);        
-        //std::cout << "  - New segment (last) " << segment->GetId() << 
+        newWays.push_back(segment);
+        //std::cout << "  - New segment (last) " << segment->GetId() <<
         //    " with " << segment->GetNodeCount() << " nodes and real length " << segmentLength << " km" << std::endl;
       }
     }
-    
+
     ways.clear();
 
     for (auto way: newWays) {
@@ -581,9 +586,9 @@ namespace osmscout {
 
       if (coord==coordsMap.end()) {
         progress.Error("Cannot resolve node with id "+
-                       NumberToString(rawWay.GetNodeId(n))+
+                       std::to_string(rawWay.GetNodeId(n))+
                        " for Way "+
-                       NumberToString(wayId)+
+                       std::to_string(wayId)+
                        ", skipping");
         return;
       }
@@ -594,7 +599,7 @@ namespace osmscout {
 
     if (!IsValidToWrite(way.nodes)) {
       progress.Error("Way coordinates are not dense enough to be written for Way "+
-                     NumberToString(wayId)+", skipping");
+                     std::to_string(wayId)+", skipping");
       return;
     }
 
@@ -670,7 +675,7 @@ namespace osmscout {
                *way);
     }
 
-    progress.SetAction("Collected "+NumberToString(collectedAreasCount)+" areas for "+NumberToString(types.Size())+" types");
+    progress.SetAction("Collected "+std::to_string(collectedAreasCount)+" areas for "+std::to_string(types.Size())+" types");
 
     return true;
   }
@@ -693,7 +698,7 @@ namespace osmscout {
     uint32_t                                rawWayCount=0;
 
     uint32_t                                writtenWayCount=0;
-    uint32_t                                mergeCount=0;
+    size_t                                  mergeCount=0;
 
     progress.SetAction("Reading type distribution");
 
@@ -731,7 +736,7 @@ namespace osmscout {
 
     if (!coordDataFile.Open(parameter.GetDestinationDirectory(),
                             parameter.GetCoordDataMemoryMaped())) {
-      std::cerr << "Cannot open coord data file!" << std::endl;
+      log.Error() << "Cannot open coord data file!";
       return false;
     }
 
@@ -779,11 +784,11 @@ namespace osmscout {
             MergeWays(progress,
                       waysByType[typeIdx],
                       restrictions);
-            
+
 #pragma omp critical
             if (waysByType[typeIdx].size()<originalWayCount) {
               progress.Info("Reduced ways of '"+typeConfig->GetTypeInfo(typeIdx)->GetName()+"' from "+
-                            NumberToString(originalWayCount)+" to "+NumberToString(waysByType[typeIdx].size())+ " way(s)");
+                            std::to_string(originalWayCount)+" to "+std::to_string(waysByType[typeIdx].size())+ " way(s)");
               mergeCount+=originalWayCount-waysByType[typeIdx].size();
             }
           }
@@ -802,7 +807,7 @@ namespace osmscout {
           }
         }
 
-        progress.SetAction("Loading "+NumberToString(nodeIds.size())+" nodes");
+        progress.SetAction("Loading "+std::to_string(nodeIds.size())+" nodes");
 
         if (!coordDataFile.Get(nodeIds,
                                coordsMap)) {
@@ -820,12 +825,12 @@ namespace osmscout {
           size_t originalWayCount=waysByType[typeIdx].size();
 
           if (originalWayCount>0) {
-            SplitLongWays(progress, waysByType[typeIdx], coordsMap);        
-            
+            SplitLongWays(progress, waysByType[typeIdx], coordsMap);
+
 #pragma omp critical
             if (waysByType[typeIdx].size()>originalWayCount) {
               progress.Info("Splitted long ways of '"+typeConfig->GetTypeInfo(typeIdx)->GetName()+"' from "+
-                            NumberToString(originalWayCount)+" to "+NumberToString(waysByType[typeIdx].size())+ " way(s)");
+                            std::to_string(originalWayCount)+" to "+std::to_string(waysByType[typeIdx].size())+ " way(s)");
               mergeCount+=originalWayCount-waysByType[typeIdx].size();
             }
           }
@@ -891,9 +896,9 @@ namespace osmscout {
                           progress,
                           restrictions);
 
-    progress.Info(NumberToString(rawWayCount) + " raw way(s) read, "+
-                  NumberToString(writtenWayCount) + " way(s) written, "+
-                  NumberToString(mergeCount) + " merges");
+    progress.Info(std::to_string(rawWayCount) + " raw way(s) read, "+
+                  std::to_string(writtenWayCount) + " way(s) written, "+
+                  std::to_string(mergeCount) + " merges");
 
     return true;
   }

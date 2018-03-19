@@ -1,19 +1,26 @@
 set(OSMSCOUT_BUILD_CORE ON CACHE INTERNAL "" FORCE)
 
-set(HEADER_FILES
+set(HEADER_FILES_OST
     include/osmscout/ost/Parser.h
-    include/osmscout/ost/Scanner.h
-    #include/osmscout/private/Config.h
-    include/osmscout/private/CoreImportExport.h
+    include/osmscout/ost/Scanner.h)
+
+
+set(HEADER_FILES_PRIVATE
+    include/osmscout/private/CoreImportExport.h)
+
+set(HEADER_FILES_SYSTEM
     include/osmscout/system/Assert.h
     include/osmscout/system/Compiler.h
     include/osmscout/system/Math.h
     include/osmscout/system/SSEMath.h
     include/osmscout/system/SSEMathPublic.h
-    include/osmscout/system/Types.h
+    include/osmscout/system/Types.h)
+
+set(HEADER_FILES_UTIL
     include/osmscout/util/Breaker.h
     include/osmscout/util/Cache.h
     include/osmscout/util/Color.h
+    include/osmscout/util/CmdLineParsing.h
     include/osmscout/util/Exception.h
     include/osmscout/util/File.h
     include/osmscout/util/FileScanner.h
@@ -32,10 +39,34 @@ set(HEADER_FILES
     include/osmscout/util/Projection.h
     include/osmscout/util/StopClock.h
     include/osmscout/util/String.h
+    include/osmscout/util/StringMatcher.h
     include/osmscout/util/TagErrorReporter.h
     include/osmscout/util/Tiling.h
     include/osmscout/util/Transformation.h
-    include/osmscout/util/WorkQueue.h
+    include/osmscout/util/WorkQueue.h)
+
+set(HEADER_FILES_ROUTING
+    include/osmscout/routing/Route.h
+    include/osmscout/routing/RouteData.h
+    include/osmscout/routing/RouteNode.h
+    include/osmscout/routing/RoutePostprocessor.h
+    include/osmscout/routing/RoutingDB.h
+    include/osmscout/routing/RoutingProfile.h
+    include/osmscout/routing/RoutingService.h
+    include/osmscout/routing/AbstractRoutingService.h
+    include/osmscout/routing/SimpleRoutingService.h
+    include/osmscout/routing/MultiDBRoutingService.h
+    include/osmscout/routing/DBFileOffset.h
+    include/osmscout/routing/TurnRestriction.h
+    include/osmscout/routing/MultiDBRoutingState.h)
+
+set(HEADER_FILES
+    ${HEADER_FILES_OST}
+    ${HEADER_FILES_PRIVATE}
+    ${HEADER_FILES_SYSTEM}
+    ${HEADER_FILES_UTIL}
+    ${HEADER_FILES_ROUTING}
+    #include/osmscout/private/Config.h
     include/osmscout/Area.h
     include/osmscout/AreaAreaIndex.h
     include/osmscout/AreaDataFile.h
@@ -44,10 +75,12 @@ set(HEADER_FILES
     include/osmscout/Coord.h
     include/osmscout/CoordDataFile.h
     #include/osmscout/CoreFeatures.h
+    include/osmscout/CoverageIndex.h
     include/osmscout/BoundingBoxDataFile.h
     include/osmscout/TypeDistributionDataFile.h
     include/osmscout/Database.h
     include/osmscout/DataFile.h
+    include/osmscout/BasemapDatabase.h
     include/osmscout/DebugDatabase.h
     include/osmscout/GeoCoord.h
     include/osmscout/GroundTile.h
@@ -55,6 +88,7 @@ set(HEADER_FILES
     include/osmscout/Location.h
     include/osmscout/LocationIndex.h
     include/osmscout/LocationService.h
+    include/osmscout/LocationDescriptionService.h
     include/osmscout/Navigation.h
     include/osmscout/Node.h
     include/osmscout/NodeDataFile.h
@@ -67,23 +101,16 @@ set(HEADER_FILES
     include/osmscout/Point.h
     include/osmscout/POIService.h
     include/osmscout/ObjectVariantDataFile.h
-    include/osmscout/Route.h
-    include/osmscout/RouteData.h
-    include/osmscout/RouteNode.h
-    include/osmscout/RoutePostprocessor.h
-    include/osmscout/RoutingProfile.h
-    include/osmscout/RoutingService.h
     include/osmscout/SRTM.h
     include/osmscout/Tag.h
     #include/osmscout/TextSearchIndex.h
-    include/osmscout/TurnRestriction.h
     include/osmscout/TypeConfig.h
     include/osmscout/TypeFeatures.h
     include/osmscout/Types.h
     include/osmscout/WaterIndex.h
     include/osmscout/Way.h
     include/osmscout/WayDataFile.h
-        include/osmscout/system/Compiler.h)
+)
 
 set(SOURCE_FILES
     src/osmscout/ost/Parser.cpp
@@ -110,10 +137,23 @@ set(SOURCE_FILES
     src/osmscout/util/Projection.cpp
     src/osmscout/util/StopClock.cpp
     src/osmscout/util/String.cpp
+    src/osmscout/util/StringMatcher.cpp
     src/osmscout/util/Tiling.cpp
     src/osmscout/util/Transformation.cpp
     src/osmscout/util/WorkQueue.cpp
     src/osmscout/util/TagErrorReporter.cpp
+    src/osmscout/routing/Route.cpp
+    src/osmscout/routing/RouteData.cpp
+    src/osmscout/routing/RouteNode.cpp
+    src/osmscout/routing/RoutePostprocessor.cpp
+    src/osmscout/routing/RoutingDB.cpp
+    src/osmscout/routing/RoutingProfile.cpp
+    src/osmscout/routing/RoutingService.cpp
+    src/osmscout/routing/AbstractRoutingService.cpp
+    src/osmscout/routing/SimpleRoutingService.cpp
+    src/osmscout/routing/MultiDBRoutingService.cpp
+    src/osmscout/routing/TurnRestriction.cpp
+    src/osmscout/routing/MultiDBRoutingState.cpp
     src/osmscout/Area.cpp
     src/osmscout/AreaDataFile.cpp
     src/osmscout/AreaAreaIndex.cpp
@@ -121,16 +161,19 @@ set(SOURCE_FILES
     src/osmscout/AreaWayIndex.cpp
     src/osmscout/Coord.cpp
     src/osmscout/CoordDataFile.cpp
+    src/osmscout/CoverageIndex.cpp
     src/osmscout/BoundingBoxDataFile.cpp
     src/osmscout/TypeDistributionDataFile.cpp
     src/osmscout/Database.cpp
     src/osmscout/DebugDatabase.cpp
+    src/osmscout/BasemapDatabase.cpp
     src/osmscout/GeoCoord.cpp
     src/osmscout/GroundTile.cpp
     src/osmscout/Intersection.cpp
     src/osmscout/Location.cpp
     src/osmscout/LocationIndex.cpp
     src/osmscout/LocationService.cpp
+    src/osmscout/LocationDescriptionService.cpp
     src/osmscout/Node.cpp
     src/osmscout/NodeDataFile.cpp
     src/osmscout/NumericIndex.cpp
@@ -142,34 +185,39 @@ set(SOURCE_FILES
     src/osmscout/Point.cpp
     src/osmscout/POIService.cpp
     src/osmscout/ObjectVariantDataFile.cpp
-    src/osmscout/Route.cpp
-    src/osmscout/RouteData.cpp
-    src/osmscout/RouteNode.cpp
-    src/osmscout/RoutePostprocessor.cpp
-    src/osmscout/RoutingProfile.cpp
-    src/osmscout/RoutingService.cpp
     src/osmscout/SRTM.cpp
     src/osmscout/Tag.cpp
     #src/osmscout/TextSearchIndex.cpp
-    src/osmscout/TurnRestriction.cpp
     src/osmscout/TypeConfig.cpp
     src/osmscout/TypeFeatures.cpp
     src/osmscout/Types.cpp
     src/osmscout/WaterIndex.cpp
     src/osmscout/Way.cpp
     src/osmscout/WayDataFile.cpp
-)
+    src/osmscout/util/CmdLineParsing.cpp)
 
 if(MARISA_FOUND)
     list(APPEND HEADER_FILES include/osmscout/TextSearchIndex.h)
     list(APPEND SOURCE_FILES src/osmscout/TextSearchIndex.cpp)
 endif()
 
-add_library(osmscout ${SOURCE_FILES} ${HEADER_FILES})
-set_property(TARGET osmscout PROPERTY CXX_STANDARD 11)
+if(APPLE)
+  set(THE_TARGET_NAME "OSMScout")
+else()
+  set(THE_TARGET_NAME "osmscout")
+endif()
+
+if(IOS)
+  add_library(${THE_TARGET_NAME} STATIC ${SOURCE_FILES} ${HEADER_FILES})
+else()
+  add_library(${THE_TARGET_NAME} ${SOURCE_FILES} ${HEADER_FILES})
+endif()
+
+set_property(TARGET ${THE_TARGET_NAME} PROPERTY CXX_STANDARD 11)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout/CoreFeatures.h.cmake ${OSMSCOUT_BASE_DIR_BUILD}/include/osmscout/CoreFeatures.h)
 create_private_config("${CMAKE_CURRENT_BINARY_DIR}/include/osmscout/private/Config.h" "osmscout")
-target_include_directories(osmscout PRIVATE include ${CMAKE_CURRENT_BINARY_DIR}/include)
+target_include_directories(${THE_TARGET_NAME} PRIVATE include ${CMAKE_CURRENT_BINARY_DIR}/include)
+
 if(MARISA_FOUND)
     target_include_directories(osmscout PRIVATE ${MARISA_INCLUDE_DIRS})
     if (MARISA_LIBRARIES_DEBUG)
@@ -178,11 +226,48 @@ if(MARISA_FOUND)
         target_link_libraries(osmscout ${MARISA_LIBRARIES})
     endif()
 endif()
-target_compile_definitions(osmscout PRIVATE -DOSMSCOUT_EXPORT_SYMBOLS)
-install(TARGETS osmscout
+
+if (ICONV_FOUND)
+    target_include_directories(${THE_TARGET_NAME} PRIVATE ${ICONV_INCLUDE_DIRS})
+    target_link_libraries(${THE_TARGET_NAME} ${ICONV_LIBRARIES})
+endif()
+
+if(CMAKE_THREAD_LIBS_INIT)
+  target_link_libraries(${THE_TARGET_NAME} ${CMAKE_THREAD_LIBS_INIT})
+endif()
+
+if(${IOS})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fembed-bitcode")
+endif()
+
+if(APPLE)
+  set_target_properties(${THE_TARGET_NAME} PROPERTIES
+  FRAMEWORK TRUE
+  FRAMEWORK_VERSION C
+  MACOSX_FRAMEWORK_IDENTIFIER com.cmake.dynamicFramework
+  #MACOSX_FRAMEWORK_INFO_PLIST Info.plist
+  PUBLIC_HEADER     "${HEADER_FILES}"
+  CODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
+
+  set_property(SOURCE "${HEADER_FILES_OST}"
+          PROPERTY MACOSX_PACKAGE_LOCATION Headers/ost)
+  set_property(SOURCE "${HEADER_FILES_PRIVATE}"
+          PROPERTY MACOSX_PACKAGE_LOCATION Headers/private)
+  set_property(SOURCE "${HEADER_FILES_SYSTEM}"
+          PROPERTY MACOSX_PACKAGE_LOCATION Headers/system)
+  set_property(SOURCE "${HEADER_FILES_UTIL}"
+          PROPERTY MACOSX_PACKAGE_LOCATION Headers/util)
+  set_property(SOURCE "${HEADER_FILES_ROUTING}"
+          PROPERTY MACOSX_PACKAGE_LOCATION Headers/routing)
+
+endif()
+
+target_compile_definitions(${THE_TARGET_NAME} PRIVATE -DOSMSCOUT_EXPORT_SYMBOLS)
+install(TARGETS ${THE_TARGET_NAME}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)
+        ARCHIVE DESTINATION lib
+        FRAMEWORK DESTINATION lib)
 
 if (MSVC)
     install(FILES $<TARGET_PDB_FILE:osmscout> DESTINATION bin OPTIONAL)
@@ -193,4 +278,5 @@ if(MARISA_FOUND)
 else()
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/osmscout DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "private/Config.h" EXCLUDE PATTERN TextSearchIndex.h EXCLUDE)
 endif()
+
 install(FILES ${OSMSCOUT_BASE_DIR_BUILD}/include/osmscout/CoreFeatures.h DESTINATION include/osmscout)

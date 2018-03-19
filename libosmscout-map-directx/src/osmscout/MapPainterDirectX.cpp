@@ -30,15 +30,18 @@
 #include <osmscout/system/Math.h>
 
 //add_definitions(-DUNICODE -D_UNICODE)
-#define UNICODE
 
 #if defined(UNICODE) || defined(_UNICODE) || defined(_MBCS) || defined(MBCS)
-#define MBUC
-#define __T(x)      L ## x
+  #define MBUC
+  #define __T(x)      L ## x
 #else
-#define __T(x)           x
+  #define __T(x)           x
 #endif
+
 #define _T(x)       __T(x)
+
+#define POINTF(x, y) D2D1::Point2F(float(x), float(y))
+#define RECTF(left, top, right, bottom) D2D1::RectF(float(left), float(top), float(right), float(bottom))
 
 namespace osmscout
 {
@@ -180,7 +183,7 @@ namespace osmscout
 #else
 		std::string enc = text;
 #endif
-		FLOAT size = fontSize * fontSizeFactor* text.length();
+		FLOAT size = float(fontSize * fontSizeFactor* text.length());
 		IDWriteTextFormat* tf = GetFont(projection, parameter, fontSize);
 		IDWriteTextLayout* pDWriteTextLayout = NULL;
 		HRESULT hr = m_pWriteFactory->CreateTextLayout(
@@ -196,7 +199,7 @@ namespace osmscout
 		hr = pDWriteTextLayout->GetMetrics(&textMetrics);
 		pDWriteTextLayout->Release();
 		if (SUCCEEDED(hr)) {
-			m_pRenderTarget->DrawText(enc.c_str(), enc.length(), tf, D2D1::RectF((FLOAT)x, (FLOAT)y, (FLOAT)x + textMetrics.width * 1.1f, (FLOAT)y + textMetrics.height * 1.1f), GetColorBrush(color));
+			m_pRenderTarget->DrawText(enc.c_str(), enc.length(), tf, RECTF(x, y, x + textMetrics.width * 1.1f, y + textMetrics.height * 1.1f), GetColorBrush(color));
 		}
 	}
 
@@ -276,7 +279,7 @@ namespace osmscout
 	IDWriteTextFormat* MapPainterDirectX::GetFont(const Projection& projection, const MapParameter& parameter, double fontSize)
 	{
 		FontMap::const_iterator f;
-		fontSize = fontSize * projection.ConvertWidthToPixel(parameter.GetFontSize());
+		fontSize = fontSize * float(projection.ConvertWidthToPixel(parameter.GetFontSize()));
 
 		uint32_t hash = GetFontHash(parameter.GetFontName().c_str(), fontSize);
 		f = m_Fonts.find(hash);
@@ -296,7 +299,7 @@ namespace osmscout
 			DWRITE_FONT_WEIGHT_NORMAL,
 			DWRITE_FONT_STYLE_NORMAL,
 			DWRITE_FONT_STRETCH_NORMAL,
-			fontSize,
+			float(fontSize),
 			_T(""),
 			&pTextFormat
 			);
@@ -362,27 +365,37 @@ namespace osmscout
 		return false;
 	}
 
-	void MapPainterDirectX::GetFontHeight(const Projection& projection, const MapParameter& parameter, double fontSize, double& height)
+	double MapPainterDirectX::GetFontHeight(const Projection& projection,
+																				const MapParameter& parameter,
+																				double fontSize)
 	{
 		if (fontHeightMap.find(fontSize) != fontHeightMap.end())
-			height = fontHeightMap[fontSize];
+			return fontHeightMap[fontSize];
 		else
 		{
-			double x, y, w, h;
-			GetTextDimension(projection, parameter, /*objectWidth*/ -1, fontSize, "App", x, y, w, h);
-			fontHeightMap[fontSize] = h;
-			height = h;
+			TextDimension dimension;
+
+			dimension=GetTextDimension(projection, parameter, /*objectWidth*/ -1, fontSize, "App");
+			fontHeightMap[fontSize] = dimension.height;
+
+			return dimension.height;
 		}
 	}
 
-	void MapPainterDirectX::GetTextDimension(const Projection& projection, const MapParameter& parameter, double objectWidth, double fontSize, const std::string& text, double& xOff, double& yOff, double& width, double& height)
+	MapPainter::TextDimension MapPainterDirectX::GetTextDimension(const Projection& projection,
+																																const MapParameter& parameter,
+																																double objectWidth,
+																																double fontSize,
+																																const std::string& text)
 	{
+		TextDimension dimension;
+
 #ifdef MBUC
 		std::wstring sample = s2w(text);
 #else
 		std::string sample = text;
 #endif
-		FLOAT size = fontSize * fontSizeFactor * text.length();
+		FLOAT size = float(fontSize * fontSizeFactor * text.length());
 		IDWriteTextFormat* font = GetFont(projection, parameter, fontSize);
 		IDWriteTextLayout* pDWriteTextLayout = NULL;
 		HRESULT hr = m_pWriteFactory->CreateTextLayout(
@@ -392,26 +405,31 @@ namespace osmscout
 			size * 2.0f,
 			size,
 			&pDWriteTextLayout);
-		xOff = 0.0;
-		yOff = 0.0;
+		dimension.xOff = 0.0;
+		dimension.yOff = 0.0;
+
 		if (FAILED(hr))
 		{
-			width = 0.0;
-			height = 0.0;
-			return;
+			dimension.width = 0.0;
+			dimension.height = 0.0;
+
+			return dimension;
 		}
 		DWRITE_TEXT_METRICS textMetrics;
 		hr = pDWriteTextLayout->GetMetrics(&textMetrics);
 		pDWriteTextLayout->Release();
+
 		if (FAILED(hr)) {
-			width = 0.0;
-			height = 0.0;
+			dimension.width = 0.0;
+			dimension.height = 0.0;
 		}
 		else
 		{
-			width = textMetrics.width;
-			height = textMetrics.height;
+			dimension.width = textMetrics.width;
+			dimension.height = textMetrics.height;
 		}
+
+		return dimension;
 	}
 
 	/*void MapPainterDirectX::GetLabelFrame(const LabelStyle& style, double& horizontal, double& vertical)
@@ -421,7 +439,7 @@ namespace osmscout
 
 	void MapPainterDirectX::DrawGround(const Projection& projection, const MapParameter& parameter, const FillStyle& style)
 	{
-		m_pRenderTarget->FillRectangle(D2D1::RectF(0.0f, 0.0f, projection.GetWidth(), projection.GetHeight()), GetColorBrush(style.GetFillColor()));
+		m_pRenderTarget->FillRectangle(RECTF(0.0f, 0.0f, projection.GetWidth(), projection.GetHeight()), GetColorBrush(style.GetFillColor()));
 	}
 
 	void MapPainterDirectX::DrawLabel(const Projection& projection, const MapParameter& parameter, const LabelData& label)
@@ -439,10 +457,10 @@ namespace osmscout
 			double g = style->GetTextColor().GetG();
 			double b = style->GetTextColor().GetB();
 			// Shield background
-			D2D1_RECT_F shieldRectangle = D2D1::RectF(label.bx1, label.by1, label.bx2 + 1, label.by2 + 1);
+			D2D1_RECT_F shieldRectangle = RECTF(label.bx1, label.by1, label.bx2 + 1, label.by2 + 1);
 			m_pRenderTarget->FillRectangle(shieldRectangle, GetColorBrush(style->GetBgColor()));
 			// Shield border
-			shieldRectangle = D2D1::RectF(label.bx1 + 2, label.by1 + 2, label.bx2 + 1 - 4, label.by2 + 1 - 4);
+			shieldRectangle = RECTF(label.bx1 + 2, label.by1 + 2, label.bx2 + 1 - 4, label.by2 + 1 - 4);
 			m_pRenderTarget->DrawRectangle(shieldRectangle, GetColorBrush(style->GetBorderColor()));
 			_DrawText(projection, parameter, label.x, label.y, label.fontSize, Color(r, g, b, label.alpha), label.text);
 		}
@@ -458,7 +476,7 @@ namespace osmscout
 		D2D1_SIZE_U size = m_Bitmaps[idx]->GetPixelSize();
 		FLOAT dx = (FLOAT)size.width / 2.0f;
 		FLOAT dy = (FLOAT)size.height / 2.0f;
-		m_pRenderTarget->DrawBitmap(m_Bitmaps[idx], D2D1::RectF(x - dx, y - dy, x + dx, y + dy));
+		m_pRenderTarget->DrawBitmap(m_Bitmaps[idx], RECTF(x - dx, y - dy, x + dx, y + dy));
 	}
 
 	void MapPainterDirectX::DrawSymbol(const Projection& projection, const MapParameter& parameter, const Symbol& symbol, double x, double y)
@@ -478,19 +496,19 @@ namespace osmscout
 			FillStyleRef   fillStyle = primitive->GetFillStyle();
 			BorderStyleRef borderStyle = primitive->GetBorderStyle();
 			bool hasBorder = borderStyle && borderStyle->GetWidth() > 0.0 && borderStyle->GetColor().IsVisible();
-			double borderWidth = hasBorder ? projection.ConvertWidthToPixel(borderStyle->GetWidth()) : 0.0;
+			float borderWidth = hasBorder ? float(projection.ConvertWidthToPixel(borderStyle->GetWidth())) : 0.0f;
 			if (dynamic_cast<PolygonPrimitive*>(primitive) != NULL)
 			{
 				PolygonPrimitive* polygon = dynamic_cast<PolygonPrimitive*>(primitive);
 				const std::list<osmscout::Vertex2D> data = polygon->GetCoords();
 				if (data.size() > 2)
 				{
-					double* coords = new double[data.size() * 2];
+					float* coords = new float[data.size() * 2];
 					std::list<osmscout::Vertex2D>::const_iterator iter = data.begin();
 					for (size_t uj = 0; iter != data.end(); uj++)
 					{
-						coords[uj * 2 + 0] = iter->GetX();
-						coords[uj * 2 + 1] = iter->GetY();
+						coords[uj * 2 + 0] = float(iter->GetX());
+						coords[uj * 2 + 1] = float(iter->GetY());
 						iter++;
 					}
 					ID2D1PathGeometry* pPathGeometry = nullptr;
@@ -501,11 +519,11 @@ namespace osmscout
 						hr = pPathGeometry->Open(&pSink);
 						if (SUCCEEDED(hr))
 						{
-							pSink->BeginFigure(D2D1::Point2F(coords[0], coords[1]), D2D1_FIGURE_BEGIN_HOLLOW);
+							pSink->BeginFigure(POINTF(coords[0], coords[1]), D2D1_FIGURE_BEGIN_HOLLOW);
 
 							for (size_t uj = 1; uj < data.size(); uj++)
 							{
-								pSink->AddLine(D2D1::Point2F(coords[uj * 2 + 0], coords[uj * 2 + 1]));
+								pSink->AddLine(POINTF(coords[uj * 2 + 0], coords[uj * 2 + 1]));
 							}
 							pSink->EndFigure(D2D1_FIGURE_END_OPEN);
 							hr = pSink->Close();
@@ -522,7 +540,7 @@ namespace osmscout
 			else if (dynamic_cast<RectanglePrimitive*>(primitive) != NULL)
 			{
 				RectanglePrimitive* rectangle = dynamic_cast<RectanglePrimitive*>(primitive);
-				D2D1_RECT_F rect = D2D1::RectF(x + projection.ConvertWidthToPixel(rectangle->GetTopLeft().GetX() - centerX),
+				D2D1_RECT_F rect = RECTF(x + projection.ConvertWidthToPixel(rectangle->GetTopLeft().GetX() - centerX),
 					y + projection.ConvertWidthToPixel(maxY - rectangle->GetTopLeft().GetY() - centerY),
 					x + projection.ConvertWidthToPixel(rectangle->GetTopLeft().GetX() - centerX) + projection.ConvertWidthToPixel(rectangle->GetWidth()),
 					y + projection.ConvertWidthToPixel(maxY - rectangle->GetTopLeft().GetY() - centerY) + projection.ConvertWidthToPixel(rectangle->GetHeight()));
@@ -532,7 +550,7 @@ namespace osmscout
 			else if (dynamic_cast<CirclePrimitive*>(primitive) != NULL)
 			{
 				CirclePrimitive* circle = dynamic_cast<CirclePrimitive*>(primitive);
-				D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(centerX, centerY), projection.ConvertWidthToPixel(circle->GetRadius()), projection.ConvertWidthToPixel(circle->GetRadius()));
+				D2D1_ELLIPSE ellipse = D2D1::Ellipse(POINTF(centerX, centerY), float(projection.ConvertWidthToPixel(circle->GetRadius())), float(projection.ConvertWidthToPixel(circle->GetRadius())));
 				m_pRenderTarget->FillEllipse(ellipse, GetColorBrush(fillStyle->GetFillColor()));
 				if (hasBorder) m_pRenderTarget->DrawEllipse(ellipse, GetColorBrush(borderStyle->GetColor()), borderWidth, GetStrokeStyle(borderStyle->GetDash()));
 			}
@@ -552,10 +570,10 @@ namespace osmscout
 			hr = pPathGeometry->Open(&pSink);
 			if (SUCCEEDED(hr))
 			{
-				pSink->BeginFigure(D2D1::Point2F(coordBuffer->buffer[transStart].GetX(), coordBuffer->buffer[transStart].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
+				pSink->BeginFigure(POINTF(coordBuffer->buffer[transStart].GetX(), coordBuffer->buffer[transStart].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
 
 				for (size_t i = transStart + 1; i <= transEnd; i++) {
-					pSink->AddLine(D2D1::Point2F(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
+					pSink->AddLine(POINTF(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
 				}
 				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
 				hr = pSink->Close();
@@ -563,11 +581,17 @@ namespace osmscout
 				pSink = NULL;
 			}
 		}
-		m_pRenderTarget->DrawGeometry(pPathGeometry, GetColorBrush(color), width, GetStrokeStyle(dash));
+		m_pRenderTarget->DrawGeometry(pPathGeometry, GetColorBrush(color), float(width), GetStrokeStyle(dash));
 		pPathGeometry->Release();
 	}
 
-	void MapPainterDirectX::DrawContourLabel(const Projection& projection, const MapParameter& parameter, const PathTextStyle& style, const std::string& text, size_t transStart, size_t transEnd)
+	void MapPainterDirectX::DrawContourLabel(const Projection& projection,
+																					 const MapParameter& parameter,
+																					 const PathTextStyle& style,
+																					 const std::string& text,
+																					 size_t transStart,
+																					 size_t transEnd,
+																					 ContourLabelHelper& helper)
 	{
 		ID2D1PathGeometry* pPathGeometry;
 		HRESULT hr = m_pDirect2dFactory->CreatePathGeometry(&pPathGeometry);
@@ -581,19 +605,19 @@ namespace osmscout
 				size_t start, end;
 				int delta;
 				if (coords[transStart].GetX() <= coords[transEnd].GetX()) {
-					pSink->BeginFigure(D2D1::Point2F(coords[transStart].GetX(), coords[transStart].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
+					pSink->BeginFigure(POINTF(coords[transStart].GetX(), coords[transStart].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
 					start = transStart + 1;
 					end = transEnd;
 					delta = 1;
 				}
 				else {
-					pSink->BeginFigure(D2D1::Point2F(coords[transEnd].GetX(), coords[transEnd].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
+					pSink->BeginFigure(POINTF(coords[transEnd].GetX(), coords[transEnd].GetY()), D2D1_FIGURE_BEGIN_HOLLOW);
 					start = transEnd - 1;
 					end = transStart;
 					delta = -1;
 				}
 				for (size_t i = start; i != end; i += delta) {
-					pSink->AddLine(D2D1::Point2F(coords[i].GetX(), coords[i].GetY()));
+					pSink->AddLine(POINTF(coords[i].GetX(), coords[i].GetY()));
 				}
 				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
 				hr = pSink->Close();
@@ -631,7 +655,12 @@ namespace osmscout
 		pPathGeometry->Release();
 	}
 
-	void MapPainterDirectX::DrawContourSymbol(const Projection& projection, const MapParameter& parameter, const Symbol& symbol, double space, size_t transStart, size_t transEnd)
+	void MapPainterDirectX::DrawContourSymbol(const Projection& projection,
+																						const MapParameter& parameter,
+																						const Symbol& symbol,
+																						double space,
+																						size_t transStart,
+																						size_t transEnd)
 	{
 		// Not implemented yet
 	}
@@ -642,7 +671,7 @@ namespace osmscout
 		std::shared_ptr<BorderStyle> borderStyle = area.borderStyle;
 
 		bool hasBorder = borderStyle && borderStyle->GetWidth() > 0.0 && borderStyle->GetColor().IsVisible();
-		double borderWidth = hasBorder ? projection.ConvertWidthToPixel(borderStyle->GetWidth()) : 0.0;
+		float borderWidth = hasBorder ? float(projection.ConvertWidthToPixel(borderStyle->GetWidth())) : 0.0f;
 
 		ID2D1PathGeometry* pPathGeometry;
 		HRESULT hr = m_pDirect2dFactory->CreatePathGeometry(&pPathGeometry);
@@ -652,9 +681,9 @@ namespace osmscout
 			hr = pPathGeometry->Open(&pSink);
 			if (SUCCEEDED(hr))
 			{
-				pSink->BeginFigure(D2D1::Point2F(coordBuffer->buffer[area.transStart].GetX(), coordBuffer->buffer[area.transStart].GetY()), D2D1_FIGURE_BEGIN_FILLED);
+				pSink->BeginFigure(POINTF(coordBuffer->buffer[area.transStart].GetX(), coordBuffer->buffer[area.transStart].GetY()), D2D1_FIGURE_BEGIN_FILLED);
 				for (size_t i = area.transStart + 1; i <= area.transEnd; i++) {
-					pSink->AddLine(D2D1::Point2F(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
+					pSink->AddLine(POINTF(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
 				}
 				pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
 				hr = pSink->Close();
@@ -678,10 +707,10 @@ namespace osmscout
 				hr = pPathGeometry->Open(&pSink);
 				if (SUCCEEDED(hr))
 				{
-					pSink->BeginFigure(D2D1::Point2F(coordBuffer->buffer[data.transStart].GetX(), coordBuffer->buffer[data.transStart].GetY()), D2D1_FIGURE_BEGIN_FILLED);
+					pSink->BeginFigure(POINTF(coordBuffer->buffer[data.transStart].GetX(), coordBuffer->buffer[data.transStart].GetY()), D2D1_FIGURE_BEGIN_FILLED);
 
 					for (size_t i = data.transStart + 1; i <= data.transEnd; i++) {
-						pSink->AddLine(D2D1::Point2F(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
+						pSink->AddLine(POINTF(coordBuffer->buffer[i].GetX(), coordBuffer->buffer[i].GetY()));
 					}
 					pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
 					hr = pSink->Close();
@@ -696,7 +725,7 @@ namespace osmscout
 	}
 
 	MapPainterDirectX::MapPainterDirectX(const StyleConfigRef& styleConfig, ID2D1Factory* pDirect2dFactory, IDWriteFactory* pWriteFactory)
-		: MapPainter(styleConfig, new CoordBufferImpl<Vertex2D>()),
+		: MapPainter(styleConfig, new CoordBuffer()),
 		m_dashLessStrokeStyle(NULL),
 		m_pDirect2dFactory(pDirect2dFactory),
 		m_pWriteFactory(pWriteFactory),
@@ -705,7 +734,6 @@ namespace osmscout
 		m_pImagingFactory(NULL),
 		dpiX(0.0f),
 		dpiY(0.0f),
-		coordBuffer((CoordBufferImpl<Vertex2D>*)transBuffer.buffer),
 		typeConfig(NULL)
 	{
 		pDirect2dFactory->GetDesktopDpi(&dpiX, &dpiY);
@@ -775,6 +803,8 @@ namespace osmscout
 
 	bool MapPainterDirectX::DrawMap(const Projection& projection, const MapParameter& parameter, const MapData& data, ID2D1RenderTarget* renderTarget)
 	{
+		bool result=true;
+
 		if (m_pDirect2dFactory == NULL) return false;
 		typeConfig = styleConfig->GetTypeConfig();
 		m_pRenderTarget = renderTarget;
@@ -801,11 +831,13 @@ namespace osmscout
 
 		renderingParams->Release();
 
-		Draw(projection, parameter, data);
+		result = Draw(projection, parameter, data);
 
 		m_pRenderingParams->Release();
 
-		return true;
+		PathTextRenderer::DestroyPathTextRenderer(m_pPathTextRenderer);
+
+		return result;
 	}
 }
 

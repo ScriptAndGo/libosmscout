@@ -14,18 +14,24 @@
 
 %include <osmscout/Types.i>
 
-%include <osmscout/GeoCoord.i>
 %include <osmscout/ObjectRef.i>
-%include <osmscout/Point.i>
+
+%include <osmscout/util/Magnification.i>
+
+%include <osmscout/GeoCoord.i>
 
 %include <osmscout/util/GeoBox.i>
+%include <osmscout/Point.i>
+
 %include <osmscout/util/FileScanner.i>
 %include <osmscout/util/FileWriter.i>
-%include <osmscout/util/Magnification.i>
 %include <osmscout/util/Parsing.i>
 %include <osmscout/util/Progress.i>
 
 %include <osmscout/Tag.i>
+
+%include <osmscout/util/TagErrorReporter.i>
+
 %include <osmscout/TypeConfig.i>
 %include <osmscout/BoundingBoxDataFile.i>
 
@@ -53,10 +59,11 @@
 %include <osmscout/Database.i>
 %include <osmscout/LocationService.i>
 
-%include <osmscout/Route.i>
-%include <osmscout/RouteData.i>
-%include <osmscout/RouteNode.i>
-%include <osmscout/RoutingProfile.i>
-%include <osmscout/RoutePostprocessor.i>
-%include <osmscout/RoutingService.i>
+%include <osmscout/routing/DBFileOffset.i>
+%include <osmscout/routing/Route.i>
+%include <osmscout/routing/RouteData.i>
+%include <osmscout/routing/RouteNode.i>
+%include <osmscout/routing/RoutingProfile.i>
+%include <osmscout/routing/RoutePostprocessor.i>
+%include <osmscout/routing/RoutingService.i>
 

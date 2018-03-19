@@ -33,15 +33,9 @@
 #include <osmscout/util/Number.h>
 #include <osmscout/util/String.h>
 
-#include <iostream>
 namespace osmscout {
 
   FeatureValue::FeatureValue()
-  {
-    // no code
-  }
-
-  FeatureValue::~FeatureValue()
   {
     // no code
   }
@@ -78,11 +72,6 @@ namespace osmscout {
     // no code
   }
 
-  Feature::~Feature()
-  {
-    // no code
-  }
-
   size_t Feature::RegisterLabel(const std::string& labelName,
                                 size_t index)
   {
@@ -111,6 +100,42 @@ namespace osmscout {
   {
     assert(false);
     return NULL;
+  }
+
+  /**
+   * Add a description of the feature for the given language code
+   * @param languageCode
+   *    language code like for example 'en'or 'de'
+   * @param description
+   *    description of the type
+   * @return
+   *    type info instance
+   */
+  void Feature::AddDescription(const std::string& languageCode,
+                               const std::string& description)
+  {
+    descriptions[languageCode]=description;
+  }
+
+  /**
+   * Returns the description for the given language code. Returns an empty string, if
+   * no description is available for the given language code.
+   *
+   * @param languageCode
+   *    languageCode like for example 'en' or 'de'
+   * @return
+   *    Description or empty string
+   */
+  std::string Feature::GetDescription(const std::string& languageCode) const
+  {
+    auto entry=descriptions.find(languageCode);
+
+    if (entry!=descriptions.end()) {
+      return entry->second;
+    }
+    else {
+      return "";
+    }
   }
 
   /**
@@ -640,11 +665,6 @@ namespace osmscout {
     // no code
   }
 
-  TypeInfo::~TypeInfo()
-  {
-    // no code
-  }
-
   TypeInfo& TypeInfo::SetNodeId(TypeId id)
   {
     this->nodeId=id;
@@ -764,6 +784,23 @@ namespace osmscout {
     return *this;
   }
 
+  /**
+   * Add a description of the type for the given language code
+   * @param languageCode
+   *    language code like for example 'en'or 'de'
+   * @param description
+   *    description of the type
+   * @return
+   *    type info instance
+   */
+  TypeInfo& TypeInfo::AddDescription(const std::string& languageCode,
+                                     const std::string& description)
+  {
+    descriptions[languageCode]=description;
+
+    return *this;
+  }
+
   bool TypeInfo::HasFeature(const std::string& featureName) const
   {
     return nameToFeatureMap.find(featureName)!=nameToFeatureMap.end();
@@ -804,6 +841,27 @@ namespace osmscout {
     }
 
     return access;
+  }
+
+  /**
+   * Returns the description for the given language code. Returns an empty string, if
+   * no description is available for the given language code.
+   *
+   * @param languageCode
+   *    languageCode like for example 'en' or 'de'
+   * @return
+   *    Description or empty string
+   */
+  std::string TypeInfo::GetDescription(const std::string& languageCode) const
+  {
+    auto entry=descriptions.find(languageCode);
+
+    if (entry!=descriptions.end()) {
+      return entry->second;
+    }
+    else {
+      return "";
+    }
   }
 
   TypeInfoSet::TypeInfoSet()
@@ -1066,7 +1124,7 @@ namespace osmscout {
 
     featureEmbankment=std::make_shared<EmbankmentFeature>();
     RegisterFeature(featureEmbankment);
-      
+
     featureRoundabout=std::make_shared<RoundaboutFeature>();
     RegisterFeature(featureRoundabout);
 
@@ -1075,6 +1133,8 @@ namespace osmscout {
     RegisterFeature(std::make_shared<BuildingFeature>());
 
     RegisterFeature(std::make_shared<IsInFeature>());
+
+    RegisterFeature(std::make_shared<ConstructionYearFeature>());
 
     // Make sure, that this is always registered first.
     // It assures that id 0 is always reserved for typeIgnore
@@ -1221,20 +1281,6 @@ namespace osmscout {
       return existingType->second;
     }
 
-    if ((typeInfo->CanBeArea() ||
-         typeInfo->CanBeNode()) &&
-         typeInfo->GetIndexAsAddress()) {
-      if (!typeInfo->HasFeature(LocationFeature::NAME)) {
-        typeInfo->AddFeature(featureLocation);
-      }
-      if (!typeInfo->HasFeature(AddressFeature::NAME)) {
-        typeInfo->AddFeature(featureAddress);
-      }
-      if (!typeInfo->HasFeature(PostalCodeFeature::NAME)) {
-        typeInfo->AddFeature(featurePostalCode);
-      }
-    }
-
     // All ways have a layer
     if (typeInfo->CanBeWay()) {
       if (!typeInfo->HasFeature(LayerFeature::NAME)) {
@@ -1244,7 +1290,8 @@ namespace osmscout {
 
     // All that is PATH-like automatically has a number of features,
     // even if it is not routable
-    if (typeInfo->IsPath()) {
+    if (typeInfo->CanBeWay() &&
+        typeInfo->IsPath()) {
       if (!typeInfo->HasFeature(WidthFeature::NAME)) {
         typeInfo->AddFeature(featureWidth);
       }
@@ -1266,7 +1313,9 @@ namespace osmscout {
     }
 
     // Everything routable should have access information and max speed information
-    if (typeInfo->CanRoute()) {
+    if ((typeInfo->CanBeArea() ||
+         typeInfo->CanBeWay()) &&
+         typeInfo->CanRoute()) {
       if (!typeInfo->HasFeature(AccessFeature::NAME)) {
         typeInfo->AddFeature(featureAccess);
       }
@@ -1278,10 +1327,36 @@ namespace osmscout {
       }
     }
 
-    // Something that has a name and is a POI automatically get the
-    // location, address website and phone features, too.
+    // All addressable areas and nodes get the postal code, location and address feature
+    if ((typeInfo->CanBeArea() ||
+         typeInfo->CanBeNode()) &&
+        typeInfo->GetIndexAsAddress()) {
+      if (!typeInfo->HasFeature(PostalCodeFeature::NAME)) {
+        typeInfo->AddFeature(featurePostalCode);
+      }
+      if (!typeInfo->HasFeature(LocationFeature::NAME)) {
+        typeInfo->AddFeature(featureLocation);
+      }
+      if (!typeInfo->HasFeature(AddressFeature::NAME)) {
+        typeInfo->AddFeature(featureAddress);
+      }
+    }
+
+    // All ways with a name have a postal code and a location
+    if (typeInfo->CanBeWay() &&
+        typeInfo->HasFeature(NameFeature::NAME)) {
+      if (!typeInfo->HasFeature(PostalCodeFeature::NAME)) {
+        typeInfo->AddFeature(featurePostalCode);
+      }
+    }
+
+    // Something that has a name and is a POI automatically gets the
+    // postal code, location, address, website and phone features, too.
     if (typeInfo->HasFeature(NameFeature::NAME) &&
         typeInfo->GetIndexAsPOI()) {
+      if (!typeInfo->HasFeature(PostalCodeFeature::NAME)) {
+        typeInfo->AddFeature(featurePostalCode);
+      }
       if (!typeInfo->HasFeature(LocationFeature::NAME)) {
         typeInfo->AddFeature(featureLocation);
       }
@@ -1592,15 +1667,13 @@ namespace osmscout {
    */
   bool TypeConfig::LoadFromOSTFile(const std::string& filename)
   {
-    FileOffset fileSize;
-    FILE*      file;
     bool success=false;
 
     try {
-      fileSize=GetFileSize(filename);
+      FileOffset fileSize=GetFileSize(filename);
+      FILE       *file=fopen(filename.c_str(),"rb");
 
-      file=fopen(filename.c_str(),"rb");
-      if (file==NULL) {
+      if (file==nullptr) {
         log.Error() << "Cannot open file '" << filename << "'";
         return false;
       }
@@ -1641,7 +1714,7 @@ namespace osmscout {
    * Loads the type configuration from the given binary data file.
    *
    * Note:
-   * Make sure that you load from afile only onto a freshly initialized
+   * Make sure that you load from file only onto a freshly initialized
    * TypeConfig instance.
    *
    * @param directory
@@ -1671,13 +1744,42 @@ namespace osmscout {
         return false;
       }
 
+      // Features
+      uint32_t featureCount;
+
+      scanner.ReadNumber(featureCount);
+
+      for (uint32_t f=1; f<=featureCount; f++) {
+        std::string featureName;
+        uint32_t    descriptionCount;
+        FeatureRef  feature;
+
+        scanner.Read(featureName);
+        scanner.ReadNumber(descriptionCount);
+
+        feature=GetFeature(featureName);
+
+        for (uint32_t d=1; d<=descriptionCount; d++) {
+          std::string languageCode;
+          std::string description;
+
+          scanner.Read(languageCode);
+          scanner.Read(description);
+
+          if (feature) {
+            feature->AddDescription(languageCode,
+                                   description);
+          }
+        }
+      }
+
       // Types
 
       uint32_t typeCount;
 
       scanner.ReadNumber(typeCount);
 
-      for (size_t i=1; i<=typeCount; i++) {
+      for (uint32_t i=1; i<=typeCount; i++) {
         std::string name;
         bool        canBeNode;
         bool        canBeWay;
@@ -1745,7 +1847,7 @@ namespace osmscout {
 
         scanner.ReadNumber(featureCount);
 
-        for (size_t f=0; f<featureCount; f++) {
+        for (uint32_t f=0; f<featureCount; f++) {
           std::string featureName;
 
           scanner.Read(featureName);
@@ -1766,12 +1868,29 @@ namespace osmscout {
 
         scanner.ReadNumber(groupCount);
 
-        for (size_t g=0; g<groupCount; g++) {
+        for (uint32_t g=0; g<groupCount; g++) {
           std::string groupName;
 
           scanner.Read(groupName);
 
           typeInfo->AddGroup(groupName);
+        }
+
+        // Descriptions
+
+        uint32_t descriptionCount;
+
+        scanner.ReadNumber(descriptionCount);
+
+        for (uint32_t d=1; d<=descriptionCount; d++) {
+          std::string languageCode;
+          std::string description;
+
+          scanner.Read(languageCode);
+          scanner.Read(description);
+
+          typeInfo->AddDescription(languageCode,
+                                   description);
         }
 
         RegisterType(typeInfo);
@@ -1812,10 +1931,32 @@ namespace osmscout {
       writer.Write(FILE_FORMAT_VERSION);
 
       uint32_t typeCount=0;
+      uint32_t featureCount=0;
 
       for (auto type : GetTypes()) {
         if (!type->IsInternal()) {
           typeCount++;
+        }
+      }
+
+      for (auto feature : GetFeatures()) {
+        if (!feature->GetDescriptions().empty()) {
+          featureCount++;
+        }
+      }
+
+      writer.WriteNumber(featureCount);
+
+      for (auto feature : GetFeatures()) {
+        if (feature->GetDescriptions().empty()) {
+          continue;
+        }
+
+        writer.Write(feature->GetName());
+        writer.WriteNumber((uint32_t)feature->GetDescriptions().size());
+        for (const auto& descriptionEntry : feature->GetDescriptions()) {
+          writer.Write(descriptionEntry.first);
+          writer.Write(descriptionEntry.second);
         }
       }
 
@@ -1847,13 +1988,19 @@ namespace osmscout {
         writer.Write(type->GetIgnore());
 
         writer.WriteNumber((uint32_t)type->GetFeatures().size());
-        for (const auto &feature : type->GetFeatures()) {
+        for (const auto& feature : type->GetFeatures()) {
           writer.Write(feature.GetFeature()->GetName());
         }
 
         writer.WriteNumber((uint32_t)type->GetGroups().size());
-        for (const auto &groupName : type->GetGroups()) {
+        for (const auto& groupName : type->GetGroups()) {
           writer.Write(groupName);
+        }
+
+        writer.WriteNumber((uint32_t)type->GetDescriptions().size());
+        for (const auto& descriptionEntry : type->GetDescriptions()) {
+          writer.Write(descriptionEntry.first);
+          writer.Write(descriptionEntry.second);
         }
       }
 

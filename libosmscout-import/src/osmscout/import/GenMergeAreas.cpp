@@ -22,13 +22,25 @@
 #include <osmscout/util/File.h>
 #include <osmscout/util/FileScanner.h>
 #include <osmscout/util/FileWriter.h>
-#include <osmscout/util/String.h>
 
 #include <osmscout/import/MergeAreaData.h>
 
 namespace osmscout {
 
   const char* MergeAreasGenerator::AREAS2_TMP="areas2.tmp";
+
+  static bool HasNoDuplicateNodes(const std::vector<Point>& points)
+  {
+    std::set<GeoCoord> coordSet;
+
+    for (const auto& point : points) {
+      if (!coordSet.insert(point.GetCoord()).second) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   void MergeAreasGenerator::GetDescription(const ImportParameter& /*parameter*/,
                                            ImportModuleDescription& description) const
@@ -269,7 +281,7 @@ namespace osmscout {
       }
     }
 
-    progress.SetAction("Collected "+NumberToString(collectedAreasCount)+" areas for "+NumberToString(loadedTypes.Size())+" types");
+    progress.SetAction("Collected "+std::to_string(collectedAreasCount)+" areas for "+std::to_string(loadedTypes.Size())+" types");
 
     return true;
   }
@@ -378,10 +390,11 @@ namespace osmscout {
           }
 
           // Flag as visited (the areas might be registered for other
-          // nodes shared by both areas, too) and we not want to
+          // nodes shared by both areas, too) and we do not want to
           // analyze it again
           visitedAreas.insert(candidateArea);
 
+          // Areas do not have the same feature value buffer values, skip
           if (area.rings[firstOuterRing].GetFeatureValueBuffer()!=candidateArea->rings[secondOuterRing].GetFeatureValueBuffer()) {
             //std::cout << "CANNOT merge areas " << area.GetFileOffset() << " and " << candidateArea->GetFileOffset() << " because of different feature values" << std::endl;
             candidate++;
@@ -398,7 +411,7 @@ namespace osmscout {
           std::list<PolygonMerger::Polygon> result;
 
           if (merger.Merge(result)) {
-            if (result.size()==1) {
+            if (result.size()==1 && HasNoDuplicateNodes(result.front().coords)) {
               //std::cout << "MERGE areas " << area.GetFileOffset() << " and " << candidateArea->GetFileOffset() << std::endl;
 
               area.rings[firstOuterRing].nodes=result.front().coords;
@@ -440,7 +453,7 @@ namespace osmscout {
                         job.areas,
                         idAreaMap);
 
-    progress.Info("Found "+NumberToString(idAreaMap.size())+" nodes as possible connection points for areas");
+    progress.Info("Found "+std::to_string(idAreaMap.size())+" nodes as possible connection points for areas");
 
     while (!job.areas.empty()) {
       AreaRef area;
@@ -549,10 +562,9 @@ namespace osmscout {
                                    const ImportParameter& parameter,
                                    Progress& progress)
   {
-    TypeInfoSet                    mergeTypes;
-    FileScanner                    scanner;
-    FileWriter                     writer;
-    uint32_t                       areasWritten=0;
+    TypeInfoSet mergeTypes;
+    FileScanner scanner;
+    FileWriter  writer;
 
     for (const auto& type : typeConfig->GetTypes()) {
       if (type->CanBeArea() &&
@@ -564,6 +576,7 @@ namespace osmscout {
     std::unordered_set<Id> nodeUseMap;
 
     try {
+
       scanner.Open(AppendFileToDir(parameter.GetDestinationDirectory(),
                                    MergeAreaDataGenerator::AREAS_TMP),
                    FileScanner::Sequential,
@@ -577,9 +590,10 @@ namespace osmscout {
         return false;
       }
 
-      uint32_t nodeCount=nodeUseMap.size();
+      size_t   nodeCount=nodeUseMap.size();
+      uint32_t areasWritten=0;
 
-      progress.Info("Found "+NumberToString(nodeCount)+" nodes as possible connection points for areas");
+      progress.Info("Found "+std::to_string(nodeCount)+" nodes as possible connection points for areas");
 
       /* ------ */
 
@@ -621,7 +635,7 @@ namespace osmscout {
             MergeAreas(progress,
                        nodeUseMap,
                        mergeJob[type->GetIndex()]);
-            progress.Info("Reduced areas of '"+type->GetName()+"' from "+NumberToString(mergeJob[type->GetIndex()].areaCount)+" to "+NumberToString(mergeJob[type->GetIndex()].areaCount-mergeJob[type->GetIndex()].mergedAway.size()));
+            progress.Info("Reduced areas of '"+type->GetName()+"' from "+std::to_string(mergeJob[type->GetIndex()].areaCount)+" to "+std::to_string(mergeJob[type->GetIndex()].areaCount-mergeJob[type->GetIndex()].mergedAway.size()));
 
             mergeJob[type->GetIndex()].areas.clear();
           }

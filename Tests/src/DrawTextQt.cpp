@@ -33,7 +33,6 @@
 #include <osmscout/SimplifiedPath.h>
 
 #include <DrawWindow.h>
-#include <unistd.h>
 
 DrawWindow::DrawWindow(QString variant, int sinCount, QWidget *parent)
    : QWidget(parent), variant(variant), sinCount(sinCount), cnt(0), startOffset(0), moveOffset(0)
@@ -48,7 +47,7 @@ DrawWindow::DrawWindow(QString variant, int sinCount, QWidget *parent)
 
   for (size_t i=0; i<sin.size(); i++) {
     sin[i]=std::sin(M_PI/180*i/(sin.size()/360));
-  }  
+  }
 }
 
 DrawWindow::~DrawWindow()
@@ -83,7 +82,7 @@ void DrawWindow::setupTransformation(QPainter *painter, const osmscout::Simplifi
   // Applying rotation and translation.
   tran.setMatrix(cosa,sina,0.0,
                  -sina,cosa,0.0,
-                 -deltaX+deltaPenX,-deltaY-deltaPenY,1.0);  
+                 -deltaX+deltaPenX,-deltaY-deltaPenY,1.0);
   painter->setTransform(tran);
 }
 
@@ -92,7 +91,7 @@ void DrawWindow::drawText1(QPainter *painter, QString string, const osmscout::Si
   QPen          pen;
   QFont         font;
   QFontMetricsF metrics=QFontMetricsF(font,painter->device());
-  double        fontHeight=12;
+  int           fontHeight=12;
 
   font.setPixelSize(fontHeight);
   font.setStyleStrategy(QFont::PreferAntialias);
@@ -123,7 +122,7 @@ void DrawWindow::drawText2(QPainter *painter, QString string, const osmscout::Si
 {
   QPen          pen;
   QFont         font;
-  double        fontHeight=12;
+  int           fontHeight=12;
   double        pLength=p.GetLength();
 
   font.setPixelSize(fontHeight);
@@ -135,7 +134,7 @@ void DrawWindow::drawText2(QPainter *painter, QString string, const osmscout::Si
   painter->setFont(font);
 
   QTextLayout textLayout(string,font,painter->device());
-  // evaluate layout 
+  // evaluate layout
   textLayout.beginLayout();
   while (textLayout.createLine().isValid()){};
   textLayout.endLayout();
@@ -216,9 +215,9 @@ void DrawWindow::drawLine(QPainter *painter, const osmscout::SimplifiedPath &p)
   */
 }
 
-void DrawWindow::paintEvent(QPaintEvent */* event */)
+void DrawWindow::paintEvent(QPaintEvent* /* event */)
 {
-  QPainter painter(this);  
+  QPainter painter(this);
   painter.fillRect(0,0, width(), height(), QBrush(QColor::fromRgbF(1,1,1)));
 
   QString string="Hebrew Sarah (שרה) is spelled: sin (ש), resh (ר) and heh (ה)";

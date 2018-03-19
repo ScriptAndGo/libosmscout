@@ -35,22 +35,22 @@ namespace osmscout {
   class WayLocationProcessorFilter : public SortDataGenerator<Way>::ProcessingFilter
   {
   private:
-    FileWriter                 writer;
-    uint32_t                   overallDataCount;
-    NameFeatureValueReader     *nameReader;
-    LocationFeatureValueReader *locationReader;
+    FileWriter                   writer;
+    uint32_t                     overallDataCount;
+    NameFeatureValueReader       *nameReader;
+    PostalCodeFeatureValueReader *postalCodeReader;
 
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
     bool Process(Progress& progress,
                  const FileOffset& offset,
                  Way& way,
-                 bool& save);
+                 bool& save) override;
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool WayLocationProcessorFilter::BeforeProcessingStart(const ImportParameter& parameter,
@@ -60,7 +60,7 @@ namespace osmscout {
     overallDataCount=0;
 
     nameReader=new NameFeatureValueReader(typeConfig);
-    locationReader=new LocationFeatureValueReader(typeConfig);
+    postalCodeReader=new PostalCodeFeatureValueReader(typeConfig);
 
     try {
       writer.Open(AppendFileToDir(parameter.GetDestinationDirectory(),
@@ -87,27 +87,28 @@ namespace osmscout {
         return true;
       }
 
-      NameFeatureValue     *nameValue=nameReader->GetValue(way.GetFeatureValueBuffer());
+      NameFeatureValue       *nameValue=nameReader->GetValue(way.GetFeatureValueBuffer());
 
-      if (nameValue==NULL) {
+      if (nameValue==nullptr) {
         return true;
       }
 
-      LocationFeatureValue *locationValue=locationReader->GetValue(way.GetFeatureValueBuffer());
-      std::string          name;
-      std::string          location;
-      std::string          address;
+      PostalCodeFeatureValue *postalCodeValue=postalCodeReader->GetValue(way.GetFeatureValueBuffer());
+      std::string            name;
+      std::string            postalCode;
 
       name=nameValue->GetName();
 
-      if (locationValue!=NULL) {
-        location=locationValue->GetLocation();
+      if (postalCodeValue!=nullptr) {
+        postalCode=postalCodeValue->GetPostalCode();
       }
 
       writer.WriteFileOffset(offset);
       writer.WriteNumber(way.GetType()->GetWayId());
+
       writer.Write(name);
-      writer.Write(location);
+      writer.Write(postalCode);
+
       writer.Write(way.nodes,false);
 
       overallDataCount++;
@@ -126,10 +127,10 @@ namespace osmscout {
                                                       const TypeConfig& /*typeConfig*/)
   {
     delete nameReader;
-    nameReader=NULL;
+    nameReader=nullptr;
 
-    delete locationReader;
-    locationReader=NULL;
+    delete postalCodeReader;
+    postalCodeReader=nullptr;
 
     writer.SetPos(0);
     writer.Write(overallDataCount);
@@ -173,16 +174,16 @@ namespace osmscout {
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
 
     bool Process(Progress& progress,
                  const FileOffset& offset,
                  Way& way,
-                 bool& save);
+                 bool& save) override;
 
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool WayNodeReductionProcessorFilter::BeforeProcessingStart(const ImportParameter& /*parameter*/,
@@ -260,7 +261,7 @@ namespace osmscout {
 
     if (reduced) {
       if (nodeBuffer.size()<2) {
-        progress.Debug("Way " + NumberToString(offset) + " empty/invalid after node reduction");
+        progress.Debug("Way " + std::to_string(offset) + " empty/invalid after node reduction");
         save=false;
         return true;
       }
@@ -332,23 +333,19 @@ namespace osmscout {
       return false;
     }
 
-    if (!RemoveRedundantNodes(progress,
-                              offset,
-                              way,
-                              save)) {
-      return false;
-    }
-
-    return true;
+    return RemoveRedundantNodes(progress,
+                                offset,
+                                way,
+                                save);
   }
 
   bool WayNodeReductionProcessorFilter::AfterProcessingEnd(const ImportParameter& /*parameter*/,
                                                            Progress& progress,
                                                            const TypeConfig& /*typeConfig*/)
   {
-    progress.Info("Duplicate nodes removed: " + NumberToString(duplicateCount));
-    progress.Info("Redundant nodes removed: " + NumberToString(redundantCount));
-    progress.Info("Overall nodes: " + NumberToString(overallCount));
+    progress.Info("Duplicate nodes removed: " + std::to_string(duplicateCount));
+    progress.Info("Redundant nodes removed: " + std::to_string(redundantCount));
+    progress.Info("Overall nodes: " + std::to_string(overallCount));
 
     return true;
   }
@@ -362,14 +359,14 @@ namespace osmscout {
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
     bool Process(Progress& progress,
                  const FileOffset& offset,
                  Way& way,
-                 bool& save);
+                 bool& save) override;
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool WayTypeIgnoreProcessorFilter::BeforeProcessingStart(const ImportParameter& /*parameter*/,
@@ -387,7 +384,7 @@ namespace osmscout {
                                              Way& way,
                                              bool& save)
   {
-    save=way.GetType()!=NULL &&
+    save=way.GetType()!=nullptr &&
          way.GetType()!=typeInfoIgnore;
 
     if (!save) {
@@ -401,7 +398,7 @@ namespace osmscout {
                                                         Progress& progress,
                                                         const TypeConfig& /*typeConfig*/)
   {
-    progress.Info("Ways without a type removed: " + NumberToString(removedWaysCount));
+    progress.Info("Ways without a type removed: " + std::to_string(removedWaysCount));
 
     return true;
   }

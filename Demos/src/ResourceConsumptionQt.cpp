@@ -112,7 +112,8 @@ int main(int argc, char* argv[])
 
   QApplication application(argc,argv,true);
 
-  QPixmap *pixmap=new QPixmap(width,height);
+  QPixmap *pixmap=new QPixmap(static_cast<int>(width),
+                              static_cast<int>(height));
 
   if (pixmap==NULL) {
     std::cerr << "Cannot create QPixmap" << std::endl;
@@ -134,7 +135,6 @@ int main(int argc, char* argv[])
   osmscout::DatabaseParameter databaseParameter;
 
   databaseParameter.SetAreaAreaIndexCacheSize(0);
-  databaseParameter.SetAreaNodeIndexCacheSize(0);
 
   osmscout::DatabaseRef   database(new osmscout::Database(databaseParameter));
   osmscout::MapServiceRef mapService(new osmscout::MapService(database));

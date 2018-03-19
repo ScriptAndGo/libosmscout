@@ -19,19 +19,20 @@
 
 #include <osmscout/MapDownloadsModel.h>
 #include <osmscout/util/Logger.h>
+#include <osmscout/OSMScoutQt.h>
 
 MapDownloadsModel::MapDownloadsModel(QObject *parent):
   QAbstractListModel(parent){
 
-  mapManager=DBThread::GetInstance()->GetMapManager();
+  mapManager=OSMScoutQt::GetInstance().GetMapManager();
   connect(mapManager.get(), SIGNAL(downloadJobsChanged()), this, SLOT(onDownloadJobsChanged()));
   connect(mapManager.get(), SIGNAL(mapDownloadFails(QString)), this, SIGNAL(mapDownloadFails(QString)));
   onDownloadJobsChanged();
 }
 
-QString MapDownloadsModel::suggestedDirectory(QVariant mapVar, QString rootDirectory)
+QString MapDownloadsModel::suggestedDirectory(QObject *obj, QString rootDirectory)
 {
-  auto mapManager=DBThread::GetInstance()->GetMapManager();
+  auto mapManager=OSMScoutQt::GetInstance().GetMapManager();
   auto directories=mapManager->getLookupDirectories();
   auto it=directories.begin();
   QString path=rootDirectory;
@@ -42,23 +43,28 @@ QString MapDownloadsModel::suggestedDirectory(QVariant mapVar, QString rootDirec
     }
   }
 
-  if (mapVar.canConvert<AvailableMapsModelMap>()){
-    AvailableMapsModelMap map=mapVar.value<AvailableMapsModelMap>();
+  const AvailableMapsModelMap *map=dynamic_cast<const AvailableMapsModelMap*>(obj);
+  if (map!=nullptr){
     path+=QDir::separator();
-    for (auto part:map.getPath()){
+    for (auto part:map->getPath()){
       path+=part+"-";
     }
-    path+=map.getCreation().toString("yyyyMMdd-HHmmss");
+    path+=map->getCreation().toString("yyyyMMdd-HHmmss");
+    return path;
+  }else{
+    qWarning() << obj << "can't be converted to AvailableMapsModelMap";
+    return path;
   }
-  return path;
 }
 
-void MapDownloadsModel::downloadMap(QVariant mapVar, QString dir)
+void MapDownloadsModel::downloadMap(QObject *obj, QString dir)
 {
-  if (mapVar.canConvert<AvailableMapsModelMap>()){
-    AvailableMapsModelMap map=mapVar.value<AvailableMapsModelMap>();
-    
-    mapManager->downloadMap(map, QDir(dir));
+  qDebug() << "request to download map:" << obj << "to" << dir;
+  const AvailableMapsModelMap *map=dynamic_cast<const AvailableMapsModelMap*>(obj);
+  if (map!=nullptr){
+    mapManager->downloadMap(*map, QDir(dir));
+  }else{
+    qWarning() << obj << "can't be converted to AvailableMapsModelMap";
   }
 }
 
@@ -94,6 +100,7 @@ void MapDownloadsModel::onDownloadProgress()
   QVector<int> roles;
   roles<<ProgressRole;
   roles<<ProgressDescriptionRole;
+  roles<<ErrorStringRole;
   emit dataChanged(createIndex(0,0), createIndex(count-1,0),roles);
 }
 
@@ -120,6 +127,8 @@ QVariant MapDownloadsModel::data(const QModelIndex &index, int role) const
       return job->getProgress();
     case ProgressDescriptionRole:
       return job->getDownloadingFile();
+    case ErrorStringRole:
+      return job->getError();
     default:
       break;
   }
@@ -134,6 +143,7 @@ QHash<int, QByteArray> MapDownloadsModel::roleNames() const
   roles[TargetDirectoryRole]="targetDirectory";
   roles[ProgressRole]="progressRole";
   roles[ProgressDescriptionRole]="progressDescription";
+  roles[ErrorStringRole]="errorString";
 
   return roles;
 }

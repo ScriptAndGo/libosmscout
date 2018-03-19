@@ -267,8 +267,10 @@ int main(int argc, char* argv[])
 
     magnification.SetLevel(level);
 
-    osmscout::OSMTileId     tileA(osmscout::GeoCoord(latBottom,lonLeft).GetOSMTile(magnification));
-    osmscout::OSMTileId     tileB(osmscout::GeoCoord(latTop,lonRight).GetOSMTile(magnification));
+    osmscout::OSMTileId     tileA(osmscout::OSMTileId::GetOSMTile(osmscout::GeoCoord(latBottom,lonLeft),
+                                                                  magnification));
+    osmscout::OSMTileId     tileB(osmscout::OSMTileId::GetOSMTile(osmscout::GeoCoord(latTop,lonRight),
+                                                                  magnification));
     uint32_t                xTileStart=std::min(tileA.GetX(),tileB.GetX());
     uint32_t                xTileEnd=std::max(tileA.GetX(),tileB.GetX());
     uint32_t                xTileCount=xTileEnd-xTileStart+1;
@@ -412,7 +414,7 @@ int main(int argc, char* argv[])
         maxTime=std::max(maxTime,time);
         totalTime+=time;
 
-        std::string output=osmscout::NumberToString(level)+"_"+osmscout::NumberToString(x)+"_"+osmscout::NumberToString(y)+".ppm";
+        std::string output=std::to_string(level)+"_"+std::to_string(x)+"_"+std::to_string(y)+".ppm";
 
         write_ppm(rbuf,output.c_str());
       }
@@ -423,7 +425,7 @@ int main(int argc, char* argv[])
                 tileHeight*yTileCount,
                 tileWidth*xTileCount*3);
 
-    std::string output=osmscout::NumberToString(level)+"_full_map.ppm";
+    std::string output=std::to_string(level)+"_full_map.ppm";
 
     write_ppm(rbuf,output.c_str());
 

@@ -32,7 +32,6 @@
 #include <osmscout/util/Geometry.h>
 #include <osmscout/util/Number.h>
 #include <osmscout/util/Projection.h>
-#include <osmscout/util/String.h>
 #include <osmscout/util/Transformation.h>
 #include <osmscout/AreaDataFile.h>
 
@@ -153,7 +152,7 @@ namespace osmscout
           TypeInfoRef victimType;
 
           for (auto &type : loadedTypes) {
-            if (areas[type->GetIndex()].size()>0 &&
+            if (!areas[type->GetIndex()].empty() &&
                 (!victimType ||
                  areas[type->GetIndex()].size()<areas[victimType->GetIndex()].size())) {
               victimType=type;
@@ -169,12 +168,13 @@ namespace osmscout
       }
     }
 
-    progress.Info("Collected "+NumberToString(collectedAreasCount)+" areas for "+NumberToString(loadedTypes.Size())+" types");
+    progress.Info("Collected "+std::to_string(collectedAreasCount)+" areas for "+std::to_string(loadedTypes.Size())+" types");
 
     return !scanner.HasError();
   }
 
-  void OptimizeAreasLowZoomGenerator::OptimizeAreas(const std::list<AreaRef>& areas,
+  void OptimizeAreasLowZoomGenerator::OptimizeAreas(Progress& progress,
+                                                    const std::list<AreaRef>& areas,
                                                     std::list<AreaRef>& optimizedAreas,
                                                     size_t width,
                                                     size_t height,
@@ -197,7 +197,8 @@ namespace osmscout
 
       size_t r=0;
       while (r<area->rings.size()) {
-        if (!area->rings[r].IsMasterRing()) {
+        if (!(area->rings[r].IsMasterRing() &&
+              area->rings[r].nodes.empty())) {
           polygon.TransformArea(projection,
                                 optimizeAreaMethod,
                                 area->rings[r].nodes,
@@ -223,9 +224,10 @@ namespace osmscout
 
         newRings.push_back(area->rings[r]);
 
-        newRings.back().nodes.clear();
+        if (!(area->rings[r].IsMasterRing() &&
+              area->rings[r].nodes.empty())) {
+          newRings.back().nodes.clear();
 
-        if (!area->rings[r].IsMasterRing()) {
           for (size_t i=polygon.GetStart();
                i<=polygon.GetEnd();
                i++) {
@@ -238,14 +240,45 @@ namespace osmscout
         r++;
       }
 
-      if ((area->rings.size()>1 && newRings.size()<=1) ||
-          (area->rings.size()==1 && newRings.size()==0)) {
-        continue;
+      // MAster ring can have nodes, but does not need to have
+      if (area->rings.front().IsMasterRing()) {
+        if (area->rings.front().nodes.empty()) {
+          if (newRings.size()==1) {
+            // Master ring is empty and the only one left => skip
+            continue;
+          }
+        }
+        else {
+          if (newRings.empty()) {
+            // Master ring is not empty and all rings were dropped => skip
+            continue;
+          }
+        }
+      }
+      else {
+        if (newRings.empty()) {
+          // No master ring is and all rings were dropped => skip
+          continue;
+        }
       }
 
       AreaRef copiedArea=std::make_shared<Area>(*area);
 
       copiedArea->rings=newRings;
+      bool skip=false;
+
+      for (const auto& ring : copiedArea->rings) {
+        if (!IsValidToWrite(ring.nodes)) {
+          progress.Error("Area coordinates are not dense enough to be written for area "+
+                         std::to_string(area->GetFileOffset()));
+          skip=true;
+          break;
+        }
+      }
+
+      if (skip) {
+        continue;
+      }
 
       optimizedAreas.push_back(copiedArea);
     }
@@ -360,8 +393,8 @@ namespace osmscout
     std::map<Pixel,std::list<FileOffset> > cellOffsets;
 
     for (const auto& area : areas) {
-      GeoBox                                  boundingBox;
-      FileOffsetFileOffsetMap::const_iterator offset=offsets.find(area->GetFileOffset());
+      GeoBox boundingBox;
+      auto   offset=offsets.find(area->GetFileOffset());
 
       if (offset==offsets.end()) {
         continue;
@@ -397,9 +430,9 @@ namespace osmscout
 
       FileOffset previousOffset=0;
       for (const auto& offset : cell.second) {
-        FileOffset data=offset-previousOffset;
+        FileOffset dataOffset=offset-previousOffset;
 
-        dataSize+=EncodeNumber(data,buffer);
+        dataSize+=EncodeNumber(dataOffset,buffer);
 
         previousOffset=offset;
       }
@@ -408,10 +441,10 @@ namespace osmscout
     data.dataOffsetBytes=BytesNeededToEncodeNumber(dataSize);
 
     progress.Info("Writing map for level "+
-                  NumberToString(data.optLevel)+", index level "+
-                  NumberToString(data.indexLevel)+", "+
-                  NumberToString(cellOffsets.size())+" cells, "+
-                  NumberToString(indexEntries)+" entries, "+
+                  std::to_string(data.optLevel)+", index level "+
+                  std::to_string(data.indexLevel)+", "+
+                  std::to_string(cellOffsets.size())+" cells, "+
+                  std::to_string(indexEntries)+" entries, "+
                   ByteSizeToString(1.0*data.cellXCount*data.cellYCount*data.dataOffsetBytes+dataSize));
 
     data.bitmapOffset=writer.GetPos();
@@ -475,7 +508,7 @@ namespace osmscout
     double dpi=320.0;
     double pixel=2.0/* mm */ * dpi / 25.4 /* inch */;
 
-    progress.Info("Minimum visible size in pixel: "+NumberToString((unsigned long)pixel));
+    progress.Info("Minimum visible size in pixel: "+std::to_string((unsigned long)pixel));
 
     try {
       scanner.Open(AppendFileToDir(parameter.GetDestinationDirectory(),
@@ -516,16 +549,17 @@ namespace osmscout
 
             magnification.SetLevel(level);
 
-            OptimizeAreas(allAreas[type->GetIndex()],
+            OptimizeAreas(progress,
+                          allAreas[type->GetIndex()],
                           optimizedAreas,
-                          1280,768,
+                          800,480,
                           dpi,
                           pixel,
                           magnification,
                           parameter.GetOptimizationWayMethod());
 
             if (optimizedAreas.empty()) {
-              progress.Debug("Empty optimization result for level "+NumberToString(level)+", no index generated");
+              progress.Debug("Empty optimization result for level "+std::to_string(level)+", no index generated");
 
               TypeData typeData;
 
@@ -537,7 +571,7 @@ namespace osmscout
               continue;
             }
 
-            progress.Info("Optimized from "+NumberToString(allAreas[type->GetIndex()].size())+" to "+NumberToString(optimizedAreas.size())+" areas");
+            progress.Info("Optimized from "+std::to_string(allAreas[type->GetIndex()].size())+" to "+std::to_string(optimizedAreas.size())+" areas");
 
             /*
             size_t optAreas=optimizedAreas.size();
@@ -614,7 +648,6 @@ namespace osmscout
   {
     FileOffset          indexOffset=0;
     FileWriter          writer;
-    Magnification       magnification; // Magnification, we optimize for
     TypeInfoSet         areaTypes;     // Types we optimize
     std::list<TypeData> areaTypesData;
 

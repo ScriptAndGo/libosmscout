@@ -4,6 +4,7 @@
 /*
   This source is part of the libosmscout-map library
   Copyright (C) 2013  Tim Teulings
+  Copyright (C) 2017  Fanny Monori
 
   This library is free software; you can redistribute it and/or
   modify it under the terms of the GNU Lesser General Public
@@ -20,112 +21,146 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307  USA
 */
 
+#define GLEW_STATIC
+
+#include <GL/glew.h>
+
 #include <osmscout/MapOpenGLFeatures.h>
 
+#include <osmscout/OpenGLMapData.h>
+
 #include <osmscout/private/MapOpenGLImportExport.h>
-
-#include <osmscout/MapPainter.h>
-
-#if defined(__APPLE__) && defined(__MACH__)
-  #include <GLUT/glut.h>
-#else
-  #if defined(OSMSCOUT_MAP_OPENGL_HAVE_GL_GLUT_H)
-    #include <GL/glut.h>
-  #elif defined(OSMSCOUT_MAP_OPENGL_HAVE_GLUT_GLUT_H)
-    #include <GLUT/glut.h>
-  #else
-    #error "no glut.h"
-  #endif
-#endif
+#include <osmscout/TextLoader.h>
 
 namespace osmscout {
-
-  class OSMSCOUT_MAP_OPENGL_API MapPainterOpenGL : public MapPainter
-  {
+  class OSMSCOUT_MAP_OPENGL_API MapPainterOpenGL
+   {
   private:
-    CoordBufferImpl<Vertex3D> *coordBuffer;
-    GLUtesselator             *tesselator;
 
-  protected:
-    bool HasIcon(const StyleConfig& styleConfig,
-                 const MapParameter& parameter,
-                 IconStyle& style);
+    int width;
+    int height;
+    double dpi;
 
-    bool HasPattern(const MapParameter& parameter,
-                    const FillStyle& style);
+    int screenWidth;
+    int screenHeight;
 
-    void GetFontHeight(const Projection& projection,
-                       const MapParameter& parameter,
-                       double fontSize,
-                       double& height);
+    float minLon;
+    float minLat;
+    float maxLon;
+    float maxLat;
 
-    void GetTextDimension(const Projection& projection,
-                          const MapParameter& parameter,
-                          double objectWidth,
-                          double fontSize,
-                          const std::string& text,
-                          double& xOff,
-                          double& yOff,
-                          double& width,
-                          double& height);
+    float lookX;
+    float lookY;
 
-    void DrawGround(const Projection& projection,
-                    const MapParameter& parameter,
-                    const FillStyle& style);
+    OpenGLMapData AreaRenderer;
+    OpenGLMapData GroundTileRenderer;
+    OpenGLMapData GroundRenderer;
+    OpenGLMapData WayRenderer;
+    OpenGLMapData ImageRenderer;
+    OpenGLMapData TextRenderer;
 
-    void DrawLabel(const Projection& projection,
-                   const MapParameter& parameter,
-                   const LabelData& label);
+    TextLoader Textloader;
 
-    void DrawPrimitivePath(const Projection& projection,
-                           const MapParameter& parameter,
-                           const DrawPrimitiveRef& primitive,
-                           double x, double y,
-                           double minX,
-                           double minY,
-                           double maxX,
-                           double maxY);
+    osmscout::MapData MapData;
+    osmscout::StyleConfigRef styleConfig;
+    osmscout::MapParameter Parameter;
+    osmscout::FillStyleRef landFill;
+    osmscout::FillStyleRef seaFill;
+    osmscout::GeoCoord Center;
+    osmscout::Magnification Magnification;
 
-    void DrawSymbol(const Projection& projection,
-                    const MapParameter& parameter,
-                    const Symbol& symbol,
-                    double x, double y);
+    /**
+     * Processes OSM area data, and converts to the format required by the OpenGL pipeline
+     */
+    void ProcessAreas(const osmscout::MapData &data, const osmscout::MapParameter &parameter,
+                      const osmscout::Projection &projection, const osmscout::StyleConfigRef &styleConfig);
 
-    void DrawIcon(const IconStyle* style,
-                  double x, double y);
+    /**
+    * Processes OSM ground data, and converts to the format required by the OpenGL pipeline
+    */
+    void ProcessGround(const osmscout::MapData &data, const osmscout::MapParameter &parameter,
+                       const osmscout::Projection &projection, const osmscout::StyleConfigRef &styleConfig);
 
-    void DrawPath(const Projection& projection,
-                  const MapParameter& parameter,
-                  const Color& color,
-                  double width,
-                  const std::vector<double>& dash,
-                  LineStyle::CapStyle startCap,
-                  LineStyle::CapStyle endCap,
-                  size_t transStart, size_t transEnd);
+    /**
+    * Processes OSM way data, and converts to the format required by the OpenGL pipeline
+    */
+    void ProcessWays(const osmscout::MapData &data, const osmscout::MapParameter &parameter,
+                     const osmscout::Projection &projection,
+                     const osmscout::StyleConfigRef &styleConfig);
 
-    void DrawContourSymbol(const Projection& projection,
-                           const MapParameter& parameter,
-                           const Symbol& symbol,
-                           double space,
-                           size_t transStart, size_t transEnd);
+    /**
+    * Processes OSM node data, and converts to the format required by the OpenGL pipeline
+    */
+    void ProcessNodes(const osmscout::MapData &data, const osmscout::MapParameter &parameter,
+                      const osmscout::Projection &projection,
+                      const osmscout::StyleConfigRef &styleConfig);
 
-    void DrawContourLabel(const Projection& projection,
-                          const MapParameter& parameter,
-                          const PathTextStyle& style,
-                          const std::string& text,
-                          size_t transStart, size_t transEnd);
+    /**
+     * Swaps currently drawn area data and processed data
+     */
+    void SwapAreaData();
 
-    void DrawArea(const Projection& projection,
-                  const MapParameter& parameter,
-                  const AreaData& area);
+    /**
+     * Swaps currently drawn ground data and processed data
+     */
+    void SwapGroundData();
+
+    /**
+     * Swaps currently drawn node data and processed data
+     */
+    void SwapNodeData();
+
+    /**
+     * Swaps currently drawn way data and processed data
+     */
+    void SwapWayData();
+
+    void AddPathVertex(osmscout::Point current, osmscout::Point previous, osmscout::Point next,
+                       osmscout::Color color, int type, float width, glm::vec3 barycentric, int border = 0,
+                       double z = 0, float dashsize = 0.0, float length = 1,
+                       osmscout::Color gapcolor = osmscout::Color(1.0, 1.0, 1.0, 1.0));
+
+    bool PixelToGeo(double x, double y, double &lon, double &lat);
+
+    bool IsVisibleArea(const Projection &projection, const GeoBox &boundingBox, double pixelOffset);
 
   public:
-    MapPainterOpenGL(const StyleConfigRef& styleConfig);
-    virtual ~MapPainterOpenGL();
 
-    bool DrawMap(const Projection& projection,
-                 const MapParameter& parameter,
-                 const MapData& data);
+    MapPainterOpenGL(int width, int height, double dpi, int screenWidth, int screenHeight, std::string fontPath);
+
+    ~MapPainterOpenGL();
+
+    /**
+     * Zooms on the map.
+     */
+    void OnZoom(float zoomDirection);
+
+    /**
+     *  Translates the map to the given direction.
+     */
+    void OnTranslation(int startPointX, int startPointY, int endPointX, int endPointY);
+
+    /**
+     * Returns the visual center of the map.
+     */
+    osmscout::GeoCoord GetCenter();
+
+    /**
+    * Processes all OSM data, and converts to the format required by the OpenGL pipeline.
+    */
+    void ProcessData(const osmscout::MapData &data, const osmscout::MapParameter &parameter,
+                     const osmscout::Projection &projection, const osmscout::StyleConfigRef &styleConfig);
+
+    /**
+    * Swaps currently drawn data and processed data.
+    */
+    void SwapData();
+
+    /**
+    * OpenGL draw call. Draws all feature of the map to the context.
+    */
+    void DrawMap();
+
   };
 }
 

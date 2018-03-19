@@ -32,10 +32,9 @@
 #endif
 
 namespace osmscout {
-        
+
     MapPainterIOS::MapPainterIOS(const StyleConfigRef& styleConfig)
-    : MapPainter(styleConfig, new CoordBufferImpl<Vertex2D>()),
-    coordBuffer((CoordBufferImpl<Vertex2D>*)transBuffer.buffer)
+    : MapPainter(styleConfig, new CoordBuffer())
     {
 #if TARGET_OS_IPHONE
         contentScale = [[UIScreen mainScreen] scale];
@@ -43,7 +42,7 @@ namespace osmscout {
         contentScale = 1.0;
 #endif
     }
-        
+
     MapPainterIOS::~MapPainterIOS(){
         for(std::vector<Image>::const_iterator image=images.begin(); image<images.end();image++){
             CGImageRelease(*image);
@@ -52,26 +51,25 @@ namespace osmscout {
             CGImageRelease(*image);
         }
     }
-    
+
     Font *MapPainterIOS::GetFont(const Projection& projection,
                                  const MapParameter& parameter,
                                  double fontSize)
     {
         std::map<size_t,Font *>::const_iterator f;
-        
-        fontSize=fontSize*projection.ConvertWidthToPixel(parameter.GetFontSize());
-        
+
+        fontSize=fontSize*projection.ConvertWidthToPixel(parameter.GetFontSize())*contentScale;
+
         f=fonts.find(fontSize);
-        
+
         if (f!=fonts.end()) {
             return f->second;
         }
-        
+
         Font *font = [Font fontWithName:[NSString stringWithUTF8String: parameter.GetFontName().c_str()] size:fontSize];
         return fonts.insert(std::pair<size_t,Font *>(fontSize,font)).first->second;
     }
 
-    
     /*
      * DrawMap()
      */
@@ -80,15 +78,224 @@ namespace osmscout {
                                const MapParameter& parameter,
                                const MapData& data,
                                CGContextRef paintCG){
-
         cg = paintCG;
-        if(contentScale!=1.0){
-            CGContextScaleCTM(cg, 1/contentScale, 1/contentScale);
-        }
         Draw(projection,
              parameter,
              data);
         return true;
+    }
+
+    /*
+     * DrawGroundTiles(const Projection& projection,
+     *                 const MapParameter& parameter,
+     *                 const std::list<GroundTile>& groundTiles,
+     *                 CGContextRef paintCG)
+     */
+    void MapPainterIOS::DrawGroundTiles(const Projection& projection,
+                                        const MapParameter& parameter,
+                                        const std::list<GroundTile>& groundTiles,
+                                        CGContextRef paintCG){
+        FillStyleRef landFill=styleConfig->GetLandFillStyle(projection);
+
+
+        if (!landFill) {
+          return;
+        }
+
+        cg = paintCG;
+
+        if (parameter.GetRenderBackground()) {
+            DrawGround(projection,
+                       parameter,
+                       *landFill);
+        }
+
+        FillStyleRef       seaFill=styleConfig->GetSeaFillStyle(projection);
+        FillStyleRef       coastFill=styleConfig->GetCoastFillStyle(projection);
+        FillStyleRef       unknownFill=styleConfig->GetUnknownFillStyle(projection);
+        LineStyleRef       coastlineLine=styleConfig->GetCoastlineLineStyle(projection);
+        std::vector<Point> points;
+        size_t             start=0;
+        size_t             end=0;
+
+        if (!seaFill) {
+            return;
+        }
+
+        double             errorTolerancePixel=projection.ConvertWidthToPixel(parameter.GetOptimizeErrorToleranceMm());
+        FeatureValueBuffer coastlineSegmentAttributes;
+
+        for (const auto& tile : groundTiles) {
+            AreaData areaData;
+
+            if (tile.type==GroundTile::unknown &&
+                !parameter.GetRenderUnknowns()) {
+                continue;
+            }
+
+            switch (tile.type) {
+                case GroundTile::land:
+                    areaData.fillStyle=landFill;
+                    break;
+                case GroundTile::water:
+                    areaData.fillStyle=seaFill;
+                    break;
+                case GroundTile::coast:
+                    areaData.fillStyle=coastFill;
+                    break;
+                case GroundTile::unknown:
+                    areaData.fillStyle=unknownFill;
+                    break;
+            }
+            if (!areaData.fillStyle){
+                continue;
+            }
+
+            GeoCoord minCoord(tile.yAbs*tile.cellHeight-90.0,
+                              tile.xAbs*tile.cellWidth-180.0);
+            GeoCoord maxCoord(minCoord.GetLat()+tile.cellHeight,
+                              minCoord.GetLon()+tile.cellWidth);
+
+            areaData.boundingBox.Set(minCoord,maxCoord);
+
+            if (tile.coords.empty()) {
+                // Fill the cell completely with the fill for the given cell type
+                points.resize(5);
+
+                points[0].SetCoord(areaData.boundingBox.GetMinCoord());
+                points[1].SetCoord(GeoCoord(areaData.boundingBox.GetMinCoord().GetLat(),
+                                            areaData.boundingBox.GetMaxCoord().GetLon()));
+                points[2].SetCoord(areaData.boundingBox.GetMaxCoord());
+                points[3].SetCoord(GeoCoord(areaData.boundingBox.GetMaxCoord().GetLat(),
+                                            areaData.boundingBox.GetMinCoord().GetLon()));
+                points[4]=points[0];
+
+                transBuffer.transPolygon.TransformArea(projection,
+                                                       TransPolygon::none,
+                                                       points,
+                                                       errorTolerancePixel);
+
+                size_t s=transBuffer.transPolygon.GetStart();
+
+                start=transBuffer.buffer->PushCoord(floor(transBuffer.transPolygon.points[s+0].x),
+                                                    ceil(transBuffer.transPolygon.points[s+0].y));
+
+
+                transBuffer.buffer->PushCoord(ceil(transBuffer.transPolygon.points[s+1].x),
+                                              ceil(transBuffer.transPolygon.points[s+1].y));
+
+                transBuffer.buffer->PushCoord(ceil(transBuffer.transPolygon.points[s+2].x),
+                                              floor(transBuffer.transPolygon.points[s+2].y));
+
+                transBuffer.buffer->PushCoord(floor(transBuffer.transPolygon.points[s+3].x),
+                                              floor(transBuffer.transPolygon.points[s+3].y));
+
+                end=transBuffer.buffer->PushCoord(floor(transBuffer.transPolygon.points[s+4].x),
+                                                  ceil(transBuffer.transPolygon.points[s+4].y));
+            } else {
+                points.resize(tile.coords.size());
+
+                for (size_t i=0; i<tile.coords.size(); i++) {
+                    double lat;
+                    double lon;
+
+                    lat=areaData.boundingBox.GetMinCoord().GetLat()+tile.coords[i].y*tile.cellHeight/GroundTile::Coord::CELL_MAX;
+                    lon=areaData.boundingBox.GetMinCoord().GetLon()+tile.coords[i].x*tile.cellWidth/GroundTile::Coord::CELL_MAX;
+
+                    points[i].SetCoord(GeoCoord(lat,lon));
+                }
+
+                transBuffer.transPolygon.TransformArea(projection,
+                                                       TransPolygon::none,
+                                                       points,
+                                                       errorTolerancePixel);
+
+                for (size_t i=transBuffer.transPolygon.GetStart(); i<=transBuffer.transPolygon.GetEnd(); i++) {
+                    double x,y;
+
+                    if (tile.coords[i].x==0) {
+                        x=floor(transBuffer.transPolygon.points[i].x);
+                    }
+                    else if (tile.coords[i].x==GroundTile::Coord::CELL_MAX) {
+                        x=ceil(transBuffer.transPolygon.points[i].x);
+                    }
+                    else {
+                        x=transBuffer.transPolygon.points[i].x;
+                    }
+
+                    if (tile.coords[i].y==0) {
+                        y=ceil(transBuffer.transPolygon.points[i].y);
+                    }
+                    else if (tile.coords[i].y==GroundTile::Coord::CELL_MAX) {
+                        y=floor(transBuffer.transPolygon.points[i].y);
+                    }
+                    else {
+                        y=transBuffer.transPolygon.points[i].y;
+                    }
+
+                    size_t idx=transBuffer.buffer->PushCoord(x,y);
+
+                    if (i==transBuffer.transPolygon.GetStart()) {
+                        start=idx;
+                    }
+                    else if (i==transBuffer.transPolygon.GetEnd()) {
+                        end=idx;
+                    }
+                }
+
+                if (coastlineLine) {
+                    size_t lineStart=0;
+                    size_t lineEnd;
+
+                    while (lineStart<tile.coords.size()) {
+                        while (lineStart<tile.coords.size() &&
+                               !tile.coords[lineStart].coast) {
+                            lineStart++;
+                        }
+
+                        if (lineStart>=tile.coords.size()) {
+                            continue;
+                        }
+
+                        lineEnd=lineStart;
+
+                        while (lineEnd<tile.coords.size() &&
+                               tile.coords[lineEnd].coast) {
+                            lineEnd++;
+                        }
+
+                        if (lineStart!=lineEnd) {
+                            WayData data;
+
+                            data.buffer=&coastlineSegmentAttributes;
+                            data.layer=0;
+                            data.lineStyle=coastlineLine;
+                            data.wayPriority=std::numeric_limits<int>::max();
+                            data.transStart=start+lineStart;
+                            data.transEnd=start+lineEnd;
+                            data.lineWidth=GetProjectedWidth(projection,
+                                                             projection.ConvertWidthToPixel(coastlineLine->GetDisplayWidth()),
+                                                             coastlineLine->GetWidth());
+                            data.startIsClosed=false;
+                            data.endIsClosed=false;
+
+                            DrawWay(*styleConfig,
+                                    projection,
+                                    parameter,
+                                    data);
+                        }
+
+                        lineStart=lineEnd+1;
+                    }
+                }
+            }
+
+            areaData.ref=ObjectFileRef();
+            areaData.transStart=start;
+            areaData.transEnd=end;
+
+            DrawArea(projection,parameter,areaData);
+        }
     }
 
     /*
@@ -100,22 +307,22 @@ namespace osmscout {
         if (style.GetIconId()==0) {
             return false;
         }
-        
+
         size_t idx=style.GetIconId()-1;
-        
+
         if (idx<images.size() &&
             images[idx]!=NULL) {
 
             return true;
         }
-        
+
         for (std::list<std::string>::const_iterator path=parameter.GetIconPaths().begin();
              path!=parameter.GetIconPaths().end();
              ++path) {
-            
+
             std::string filename=*path+style.GetIconName()+".png";
             //std::cout << "Trying to Load image " << filename << std::endl;
-            
+
 #if TARGET_OS_IPHONE
             UIImage *image = [[UIImage alloc] initWithContentsOfFile:[NSString stringWithUTF8String: filename.c_str()]];
 #else
@@ -131,20 +338,20 @@ namespace osmscout {
                 if (idx>=images.size()) {
                     images.resize(idx+1, NULL);
                 }
-                
-                images[idx]=imgRef;                
+
+                images[idx]=imgRef;
                 //std::cout << "Loaded image '" << filename << "'" << std::endl;
 
                 return true;
             }
         }
-        
+
         std::cerr << "ERROR while loading image '" << style.GetIconName() << "'" << std::endl;
         style.SetIconId(0);
-        
+
         return false;
 }
-    
+
     static void DrawPattern (void * info,CGContextRef cg){
         CGImageRef imgRef = (CGImageRef)info;
 #if TARGET_OS_IPHONE
@@ -155,36 +362,36 @@ namespace osmscout {
         CGRect rect = CGRectMake(0, 0, CGImageGetWidth(imgRef), CGImageGetHeight(imgRef));
         CGContextDrawImage(cg, rect, imgRef);
     }
-    
+
     static CGPatternCallbacks patternCallbacks = {
       0, &DrawPattern,NULL
     };
-    
+
     /*
      * HasPattern()
      */
     bool MapPainterIOS::HasPattern(const MapParameter& parameter,
                                    const FillStyle& style){
         assert(style.HasPattern());
-        
+
         // Was not able to load pattern
         if (style.GetPatternId()==0) {
             return false;
         }
-        
+
         size_t idx=style.GetPatternId()-1;
-        
+
         if (idx<patternImages.size() &&
             patternImages[idx]) {
 
             return true;
         }
-        
+
         for (std::list<std::string>::const_iterator path=parameter.GetPatternPaths().begin();
              path!=parameter.GetPatternPaths().end();
              ++path) {
             std::string filename=*path+style.GetPatternName()+".png";
-            
+
 #if TARGET_OS_IPHONE
             UIImage *image = [[UIImage alloc] initWithContentsOfFile:[NSString stringWithUTF8String: filename.c_str()]];
 #else
@@ -208,20 +415,19 @@ namespace osmscout {
                 return true;
             }
         }
-        
+
         std::cerr << "ERROR while loading icon file '" << style.GetPatternName() << "'" << std::endl;
         style.SetPatternId(std::numeric_limits<size_t>::max());
-        
+
         return false;
     }
-    
+
     /**
      * Returns the height of the font.
      */
-    void MapPainterIOS::GetFontHeight(const Projection& projection,
+    double MapPainterIOS::GetFontHeight(const Projection& projection,
                                       const MapParameter& parameter,
-                                      double fontSize,
-                                      double& height){
+                                      double fontSize){
         Font *font = GetFont(projection,parameter,fontSize);
 #if TARGET_OS_IPHONE
         CGSize size = [@"Aj" sizeWithFont:font];
@@ -229,87 +435,102 @@ namespace osmscout {
         NSRect stringBounds = [@"Aj" boundingRectWithSize:CGSizeMake(500, 50) options:NSStringDrawingUsesLineFragmentOrigin attributes:[NSDictionary dictionaryWithObject:font forKey:NSFontAttributeName]];
         CGSize size = stringBounds.size;
 #endif
-        height = size.height;
+        return size.height;
     }
-    
+
     /*
      * GetTextDimension()
      */
-    void MapPainterIOS::GetTextDimension(const Projection& projection,
-                                         const MapParameter& parameter,
-                                         double objectWidth,
-                                         double fontSize,
-                                         const std::string& text,
-                                         double& xOff,
-                                         double& yOff,
-                                         double& width,
-                                         double& height){
+    MapPainter::TextDimension MapPainterIOS::GetTextDimension(const Projection& projection,
+                                                              const MapParameter& parameter,
+                                                              double objectWidth,
+                                                              double fontSize,
+                                                              const std::string& text){
         Font *font = GetFont(projection,parameter,fontSize);
         NSString *str = [NSString stringWithUTF8String:text.c_str()];
+        CGRect rect = CGRectZero;
+
 #if TARGET_OS_IPHONE
-        CGSize size = [str sizeWithFont:font];
+        NSMutableParagraphStyle *textStyle = [[NSMutableParagraphStyle defaultParagraphStyle] mutableCopy];
+        textStyle.lineBreakMode = NSLineBreakByWordWrapping;
+        textStyle.alignment = NSTextAlignmentCenter;
+
+        if(objectWidth > 0){
+            CGSize averageFontSize = [@"a" sizeWithFont:font];
+            CGFloat proposedWidth = GetProposedLabelWidth(parameter,
+                                                       averageFontSize.width,
+                                                       objectWidth,
+                                                       text.length());
+
+            rect = [str boundingRectWithSize: CGSizeMake(proposedWidth, CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin
+                                  attributes:@{NSFontAttributeName:font, NSParagraphStyleAttributeName:textStyle}
+                                     context:nil];
+        } else {
+            CGSize size = [str sizeWithAttributes:@{NSFontAttributeName:font, NSParagraphStyleAttributeName:textStyle}];
+            rect.size.width = size.width;
+            rect.size.height = size.height;
+        }
 #else
         NSRect stringBounds = [str boundingRectWithSize:CGSizeMake(500, 50) options:NSStringDrawingUsesLineFragmentOrigin attributes:[NSDictionary dictionaryWithObject:font forKey:NSFontAttributeName]];
         CGSize size = stringBounds.size;
+        rect.size.width = size.width;
+        rect.size.height = size.height;
 #endif
-        xOff = 0;
-        yOff = 0;
-        width = size.width;
-        height = size.height;
+
+        return TextDimension(rect.origin.x,
+                             rect.origin.y,
+                             rect.size.width,
+                             rect.size.height);
     }
- 
+
     double MapPainterIOS::textLength(const Projection& projection, const MapParameter& parameter, double fontSize, std::string text){
-        double xOff;
-        double yOff;
-        double width;
-        double height;
-        GetTextDimension(projection,parameter,/*objectWidth*/-1,fontSize,text,xOff,yOff,width,height);
-        return width;
+        TextDimension dimension=GetTextDimension(projection,parameter,/*objectWidth*/-1,fontSize,text);
+
+        return dimension.width;
     }
-    
+
     double MapPainterIOS::textHeight(const Projection& projection, const MapParameter& parameter, double fontSize, std::string text){
-        double xOff;
-        double yOff;
-        double width;
-        double height;
-        GetTextDimension(projection, parameter,/*objectWidth*/-1,fontSize,text,xOff,yOff,width,height);
-        return height;
+        TextDimension dimension=GetTextDimension(projection,parameter,/*objectWidth*/-1,fontSize,text);
+
+        return dimension.height;
     }
-    
+
     /*
      * DrawLabel(const Projection& projection, const MapParameter& parameter, const LabelData& label)
      */
     void MapPainterIOS::DrawLabel(const Projection& projection,
                    const MapParameter& parameter,
                    const LabelData& label){
-        
+
         if (dynamic_cast<const TextStyle*>(label.style.get())!=NULL) {
-            if(label.y <= MapPainterIOS::yLabelMargin ||
-               label.y >= projection.GetHeight() - MapPainterIOS::yLabelMargin){
-                return;
-            }
-            
             const TextStyle* style=dynamic_cast<const TextStyle*>(label.style.get());
             double           r=style->GetTextColor().GetR();
             double           g=style->GetTextColor().GetG();
             double           b=style->GetTextColor().GetB();
-            
-            
+
             CGContextSaveGState(cg);
             CGContextSetTextDrawingMode(cg, kCGTextFill);
             Font *font = GetFont(projection, parameter, label.fontSize);
             NSString *str = [NSString stringWithCString:label.text.c_str() encoding:NSUTF8StringEncoding];
             //std::cout << "label : "<< label.text << " font size : " << label.fontSize << std::endl;
-            
+
+#if TARGET_OS_IPHONE
+            NSMutableParagraphStyle *textStyle = [[NSMutableParagraphStyle defaultParagraphStyle] mutableCopy];
+            textStyle.lineBreakMode = NSLineBreakByWordWrapping;
+            textStyle.alignment = NSTextAlignmentCenter;
+            NSDictionary *attrDict = @{NSFontAttributeName:font, NSParagraphStyleAttributeName:textStyle};
+            CGRect rect = CGRectMake(label.bx1, label.by1, label.bx2 - label.bx1, label.by2 - label.by1);
+#endif
+
             if (style->GetStyle()==TextStyle::normal) {
                 CGContextSetRGBFillColor(cg, r, g, b, label.alpha);
 #if TARGET_OS_IPHONE
-                [str drawAtPoint:CGPointMake(label.x, label.y) withFont:font];
+                [str drawInRect:rect withAttributes:attrDict];
 #else
                 NSColor *color = [NSColor colorWithSRGBRed:style->GetTextColor().GetR() green:style->GetTextColor().GetG() blue:style->GetTextColor().GetB() alpha:style->GetTextColor().GetA()];
                 NSDictionary *attrsDictionary = [NSDictionary dictionaryWithObjectsAndKeys:font,NSFontAttributeName,color,NSForegroundColorAttributeName, nil];
                 [str drawAtPoint:CGPointMake(label.x, label.y) withAttributes:attrsDictionary];
-                
+
 #endif
             } else if (style->GetStyle()==TextStyle::emphasize) {
                 CGContextSetRGBFillColor(cg, r, g, b, label.alpha);
@@ -317,7 +538,7 @@ namespace osmscout {
                 CGColorRef haloColor = CGColorCreate(colorSpace, (CGFloat[]){ 1, 1, 1, static_cast<CGFloat>(label.alpha) });
                 CGContextSetShadowWithColor( cg, CGSizeMake( 0.0, 0.0 ), 2.0f, haloColor );
 #if TARGET_OS_IPHONE
-                [str drawAtPoint:CGPointMake(label.x, label.y) withFont:font];
+                [str drawInRect:rect withAttributes:attrDict];
 #else
                 NSColor *color = [NSColor colorWithSRGBRed:style->GetTextColor().GetR() green:style->GetTextColor().GetG() blue:style->GetTextColor().GetB() alpha:style->GetTextColor().GetA()];
                 NSDictionary *attrsDictionary = [NSDictionary dictionaryWithObjectsAndKeys:font,NSFontAttributeName,color,NSForegroundColorAttributeName, nil];
@@ -328,11 +549,11 @@ namespace osmscout {
             }
             CGContextRestoreGState(cg);
         }
-        
+
         else if (dynamic_cast<const ShieldStyle*>(label.style.get())!=NULL) {
             const ShieldStyle* style=dynamic_cast<const ShieldStyle*>(label.style.get());
-            
-            
+
+
             if(label.bx1 <= MapPainterIOS::plateLabelMargin ||
                label.by1 <= MapPainterIOS::plateLabelMargin ||
                label.bx2 >= projection.GetWidth() - MapPainterIOS::plateLabelMargin ||
@@ -355,14 +576,14 @@ namespace osmscout {
                                             label.bx2-label.bx1+1,
                                             label.by2-label.by1+1));
             CGContextDrawPath(cg, kCGPathFillStroke);
-            
+
             CGContextAddRect(cg, CGRectMake(label.bx1+2,
                                             label.by1+2,
                                             label.bx2-label.bx1+1-4,
                                             label.by2-label.by1+1-4));
             CGContextDrawPath(cg, kCGPathStroke);
-            
-            
+
+
             Font *font = GetFont(projection, parameter, label.fontSize);
             NSString *str = [NSString stringWithUTF8String:label.text.c_str()];
 #if TARGET_OS_IPHONE
@@ -377,10 +598,10 @@ namespace osmscout {
             [str drawAtPoint:CGPointMake(label.x, label.y) withAttributes:attrsDictionary];
 #endif
             CGContextRestoreGState(cg);
-            
+
         }
     }
-    
+
     double MapPainterIOS::pathLength(size_t transStart, size_t transEnd){
         double len = 0.0;
         double deltaX, deltaY;
@@ -391,7 +612,7 @@ namespace osmscout {
         }
         return len;
     }
-    
+
     void MapPainterIOS::followPathInit(FollowPathHandle &hnd, Vertex2D &origin, size_t transStart, size_t transEnd,
                                        bool isClosed, bool keepOrientation) {
         hnd.i = 0;
@@ -413,9 +634,9 @@ namespace osmscout {
         hnd.direction = (hnd.transStart < hnd.transEnd) ? 1 : -1;
         origin.Set(coordBuffer->buffer[hnd.transStart].GetX(), coordBuffer->buffer[hnd.transStart].GetY());
     }
-    
+
     bool MapPainterIOS::followPath(FollowPathHandle &hnd, double l, Vertex2D &origin) {
-        
+
         double x = origin.GetX();
         double y = origin.GetY();
         double x2,y2;
@@ -431,13 +652,13 @@ namespace osmscout {
             deltaX = (x2 - x);
             deltaY = (y2 - y);
             len = sqrt(deltaX*deltaX + deltaY*deltaY);
-            
+
             fracToGo = l/len;
             if(fracToGo <= 1.0) {
                 origin.Set(x + deltaX*fracToGo,y + deltaY*fracToGo);
                 return true;
             }
-            
+
             //advance to next point on the path
             l -= len;
             x = x2;
@@ -452,10 +673,10 @@ namespace osmscout {
                                           const Symbol& symbol,
                                           double space,
                                           size_t transStart, size_t transEnd){
-        
+
         double minX,minY,maxX,maxY;
         symbol.GetBoundingBox(minX,minY,maxX,maxY);
-        
+
         double width=projection.ConvertWidthToPixel(maxX-minX);
         double height=projection.ConvertWidthToPixel(maxY-minY);
         bool isClosed = false;
@@ -498,7 +719,7 @@ namespace osmscout {
         double dy = v1.GetY() - v2.GetY();
         return dx*dx+dy*dy;
     }
-    
+
     /*
      * DrawContourLabel(const Projection& projection,
      *                  const MapParameter& parameter,
@@ -510,7 +731,8 @@ namespace osmscout {
                                          const MapParameter& parameter,
                                          const PathTextStyle& style,
                                          const std::string& text,
-                                         size_t transStart, size_t transEnd){
+                                         size_t transStart, size_t transEnd,
+                                         ContourLabelHelper& helper){
         Font *font = GetFont(projection, parameter, style.GetSize());
         Vertex2D charOrigin;
         FollowPathHandle followPathHnd;
@@ -518,7 +740,7 @@ namespace osmscout {
         if(!followPath(followPathHnd, contourLabelMargin, charOrigin)){
             return;
         }
-        
+
         // check if the same label has been drawn near this one
         Vertex2D textOrigin(charOrigin);
         auto its = wayLabels.equal_range(text);
@@ -527,7 +749,7 @@ namespace osmscout {
                 return;
             }
         }
-        
+
         CGContextSaveGState(cg);
 #if TARGET_OS_IPHONE
         CGContextSetTextDrawingMode(cg, kCGTextFill);
@@ -539,24 +761,24 @@ namespace osmscout {
         NSColor *color = [NSColor colorWithSRGBRed:style.GetTextColor().GetR() green:style.GetTextColor().GetG() blue:style.GetTextColor().GetB() alpha:style.GetTextColor().GetA()];
         NSDictionary *attrsDictionary = [NSDictionary dictionaryWithObjectsAndKeys:font,NSFontAttributeName,color,NSForegroundColorAttributeName, nil];
 #endif
-        
+
         NSString *nsText= [NSString stringWithCString:text.c_str() encoding:NSUTF8StringEncoding];
         double x1,y1,x2,y2,slope;
         NSUInteger charsCount = [nsText length];
         Vertex2D *coords = new Vertex2D[charsCount];
         double *slopes = new double[charsCount];
-        double nww,nhh,xOff,yOff;
+        TextDimension dimension;
         int labelRepeatCount = 0;
         while(labelRepeatCount++ < labelRepeatMaxCount){
             int i = 0;
             while(i<charsCount){
-                
+
                 NSString *str = [nsText substringWithRange:NSMakeRange(i, 1)];
-                
-                GetTextDimension(projection, parameter,/*objectWidth*/-1,style.GetSize(), [str cStringUsingEncoding:NSUTF8StringEncoding], xOff, yOff, nww, nhh);
+
+                dimension=GetTextDimension(projection, parameter,/*objectWidth*/-1,style.GetSize(), [str cStringUsingEncoding:NSUTF8StringEncoding]);
                 x1 = charOrigin.GetX();
                 y1 = charOrigin.GetY();
-                if(!followPath(followPathHnd,nww, charOrigin)){
+                if(!followPath(followPathHnd,dimension.width, charOrigin)){
                     goto exit;
                 }
                 x2 = charOrigin.GetX();
@@ -568,7 +790,7 @@ namespace osmscout {
                 }
                 coords[i].Set(x1, y1);
                 slopes[i] = slope;
-                
+
                 if(!followPath(followPathHnd, 2, charOrigin)){
                     goto exit;
                 }
@@ -582,9 +804,9 @@ namespace osmscout {
                 ct = CGAffineTransformMakeRotation(slopes[i]);
                 CGContextConcatCTM(cg, ct);
 #if TARGET_OS_IPHONE
-                [str drawAtPoint:CGPointMake(0,-nhh/2) withFont:font];
+                [str drawAtPoint:CGPointMake(0,-dimension.height/2) withFont:font];
 #else
-                [str drawAtPoint:CGPointMake(0,-nhh/2) withAttributes:attrsDictionary];
+                [str drawAtPoint:CGPointMake(0,-dimension.height/2) withAttributes:attrsDictionary];
 #endif
                 CGContextRestoreGState(cg);
             }
@@ -609,10 +831,10 @@ namespace osmscout {
     void MapPainterIOS::DrawIcon(const IconStyle* style,
                   double x, double y){
         size_t idx=style->GetIconId()-1;
-        
+
         assert(idx<images.size());
         assert(images[idx]);
-        
+
         CGFloat w = CGImageGetWidth(images[idx]);
         CGFloat h = CGImageGetHeight(images[idx]);
         CGRect rect = CGRectMake(x-w/2, -h/2-y, w, h);
@@ -621,7 +843,7 @@ namespace osmscout {
         CGContextDrawImage(cg, rect, images[idx]);
         CGContextRestoreGState(cg);
     }
-    
+
     /*
      * DrawSymbol(const Projection& projection,
      *            const MapParameter& parameter,
@@ -638,16 +860,16 @@ namespace osmscout {
         double maxY;
 
         symbol.GetBoundingBox(minX,minY,maxX,maxY);
-        
+
         CGContextSaveGState(cg);
         for (std::list<DrawPrimitiveRef>::const_iterator p=symbol.GetPrimitives().begin();
              p!=symbol.GetPrimitives().end();
              ++p) {
-  
+
             DrawPrimitive* primitive=p->get();
             double         centerX=(maxX+minX)/2;
             double         centerY=(maxY+minY)/2;
-            
+
             if (dynamic_cast<PolygonPrimitive*>(primitive)!=NULL) {
                 PolygonPrimitive* polygon=dynamic_cast<PolygonPrimitive*>(primitive);
                 FillStyleRef fillStyle=polygon->GetFillStyle();
@@ -658,15 +880,15 @@ namespace osmscout {
                 } else {
                     CGContextSetRGBFillColor(cg,0,0,0,0);
                 }
-                
+
                 if (borderStyle) {
                     SetBorder(projection, parameter, *borderStyle);
                 } else {
                     CGContextSetRGBStrokeColor(cg,0,0,0,0);
                 }
-                
+
                 CGContextBeginPath(cg);
-                
+
                 for (std::list<Vertex2D>::const_iterator pixel=polygon->GetCoords().begin();
                      pixel!=polygon->GetCoords().end();
                      ++pixel) {
@@ -678,7 +900,7 @@ namespace osmscout {
                                                 y+projection.ConvertWidthToPixel(maxY-pixel->GetY()-centerY));
                     }
                 }
-                
+
                 CGContextDrawPath(cg, kCGPathFillStroke);
             }
             else if (dynamic_cast<RectanglePrimitive*>(primitive)!=NULL) {
@@ -690,7 +912,7 @@ namespace osmscout {
                 } else {
                     CGContextSetRGBFillColor(cg,0,0,0,0);
                 }
-                
+
                 if (borderStyle) {
                     SetBorder(projection, parameter, *borderStyle);
                 } else {
@@ -712,7 +934,7 @@ namespace osmscout {
                 } else {
                     CGContextSetRGBFillColor(cg,0,0,0,0);
                 }
-                
+
                 if (borderStyle) {
                     SetBorder(projection, parameter, *borderStyle);
                 } else {
@@ -728,7 +950,7 @@ namespace osmscout {
         }
         CGContextRestoreGState(cg);
     }
-    
+
     /*
      * DrawPath(const Projection& projection,
      *          const MapParameter& parameter,
@@ -747,7 +969,7 @@ namespace osmscout {
                   LineStyle::CapStyle startCap,
                   LineStyle::CapStyle endCap,
                   size_t transStart, size_t transEnd){
-        
+
         CGContextSaveGState(cg);
         CGContextSetRGBStrokeColor(cg, color.GetR(), color.GetG(), color.GetB(), color.GetA());
         CGContextSetLineWidth(cg, width);
@@ -784,7 +1006,7 @@ namespace osmscout {
         }
         CGContextRestoreGState(cg);
     }
-        
+
     /*
      * SetFill(const Projection& projection,
      *          const MapParameter& parameter,
@@ -794,7 +1016,7 @@ namespace osmscout {
                                 const MapParameter& parameter,
                                 const FillStyle& fillStyle,
                                 CGFloat xOffset, CGFloat yOffset) {
-        
+
         if (fillStyle.HasPattern() &&
             projection.GetMagnification()>=fillStyle.GetPatternMinMag() &&
             HasPattern(parameter,fillStyle)) {
@@ -811,14 +1033,14 @@ namespace osmscout {
             CGContextSetFillPattern(cg, pattern, &components);
             CGPatternRelease(pattern);
         } else if (fillStyle.GetFillColor().IsVisible()) {
-            
+
             CGContextSetRGBFillColor(cg, fillStyle.GetFillColor().GetR(), fillStyle.GetFillColor().GetG(),
                                      fillStyle.GetFillColor().GetB(), fillStyle.GetFillColor().GetA());
         } else {
             CGContextSetRGBFillColor(cg,0,0,0,0);
         }
     }
-    
+
     /*
      * SetPen(const LineStyle& style,
      *        double lineWidth)
@@ -830,7 +1052,7 @@ namespace osmscout {
                                       style.GetLineColor().GetB(),
                                       style.GetLineColor().GetA());
         CGContextSetLineWidth(cg,lineWidth);
-        
+
         if (style.GetDash().empty()) {
             CGContextSetLineDash(cg, 0.0, NULL, 0);
             CGContextSetLineCap(cg, kCGLineCapRound);
@@ -846,7 +1068,7 @@ namespace osmscout {
 
     }
 
-    
+
     /*
      * DrawArea(const Projection& projection,
      *          const MapParameter& parameter,
@@ -865,13 +1087,13 @@ namespace osmscout {
         }
         CGContextAddLineToPoint(cg,coordBuffer->buffer[area.transStart].GetX(),
                                 coordBuffer->buffer[area.transStart].GetY());
-        
+
         if (!area.clippings.empty()) {
             for (std::list<PolyData>::const_iterator c=area.clippings.begin();
                  c!=area.clippings.end();
                  c++) {
                 const PolyData& data=*c;
-                
+
                 CGContextMoveToPoint(cg,coordBuffer->buffer[data.transStart].GetX(),
                             coordBuffer->buffer[data.transStart].GetY());
                 for (size_t i=data.transStart+1; i<=data.transEnd; i++) {
@@ -882,13 +1104,13 @@ namespace osmscout {
                                         coordBuffer->buffer[data.transStart].GetY());
             }
         }
-        
+
         if (area.fillStyle) {
             SetFill(projection, parameter, *area.fillStyle);
         } else {
             CGContextSetRGBFillColor(cg,0,0,0,0);
         }
-        
+
         if (area.borderStyle) {
             SetBorder(projection, parameter, *area.borderStyle);
         } else {
@@ -899,7 +1121,7 @@ namespace osmscout {
         CGContextRestoreGState(cg);
     }
 
-    
+
     /*
      * DrawGround(const Projection& projection,
      *            const MapParameter& parameter,
@@ -916,7 +1138,7 @@ namespace osmscout {
         CGContextDrawPath(cg, kCGPathFill);
         CGContextRestoreGState(cg);
     }
-    
+
     /*
      * SetBorder(const Projection& projection,
      *           const MapParameter& parameter,
@@ -926,14 +1148,14 @@ namespace osmscout {
                                   const MapParameter& parameter,
                                   const BorderStyle& borderStyle){
         double borderWidth=projection.ConvertWidthToPixel(borderStyle.GetWidth());
-        
+
         if (borderWidth>=parameter.GetLineMinWidthPixel()) {
             CGContextSetRGBStrokeColor(cg,borderStyle.GetColor().GetR(),
                                        borderStyle.GetColor().GetG(),
                                        borderStyle.GetColor().GetB(),
                                        borderStyle.GetColor().GetA());
             CGContextSetLineWidth(cg, borderWidth);
-            
+
             if (borderStyle.GetDash().empty()) {
                 CGContextSetLineDash(cg, 0.0, NULL, 0);
                 CGContextSetLineCap(cg, kCGLineCapRound);
@@ -951,5 +1173,4 @@ namespace osmscout {
         }
     }
 
-    
 }

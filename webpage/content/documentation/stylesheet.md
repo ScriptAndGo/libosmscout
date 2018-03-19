@@ -2,12 +2,12 @@
 date: "2016-06-30T19:50:42+02:00"
 title: "Style sheet syntax"
 description: "Description of the style sheet syntax in *.oss files"
-weight: 8
+weight: 9
 
 menu:
   main:
     Parent: "documentation"
-    Weight: 8
+    Weight: 9
 ---
 
 
@@ -265,7 +265,6 @@ displayWidth |ScreenSize   |width of the line in millimeter ("size on map")
 width        |GroundSize   |width of the line in meters ("real word dimension"). Note that if the object itself has a "width" feature, this value will be replaced with the actual value!
 displayOffset|ScreenSize   |Offset of drawn line in relation to the actual path.
 offset       |FroundSize   |Offset of the drawn line in relation to the actual path.
-cap          |Cap          |Cap to be used in all cases.
 joinCap      |Cap          |Cap in case where lines join.
 endCap       |Cap          |Cap in the case where the lines ends without joining another line.
 priority     |Int          |Drawing priority in relation to other slots/pathes of the same object. Smaller values are drawn first.
@@ -421,8 +420,8 @@ Currently the following functions exist:
 
 Name           |Type         |Description
 ---------------|-------------|-----------
-lighten        |Color, Int   |Returns a lighter version of the given color
-darken         |Color, Int   |Returns a darker version of the given color
+lighten        |Color, Double|Returns a lighter version of the given color
+darken         |Color, Double|Returns a darker version of the given color
 
 ## Example
 

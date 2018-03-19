@@ -153,6 +153,37 @@ GRADES
     "bark_mulch"
   }
 
+FEATURES
+  FEATURE Address
+  DESC
+    en: "Address"
+    de: "Adresse"
+
+  FEATURE AdminLevel
+  DESC
+    en: "administrative level"
+    de: "Administrative Hierachie"
+
+  FEATURE Destination
+  DESC
+    en: "destination"
+    de: "Ziel"
+
+  FEATURE Name
+  DESC
+    en: "object name"
+    de: "Objektname"
+
+  FEATURE NameAlt
+  DESC
+    en: "object name"
+    de: "Objektname"
+
+  FEATURE Width
+  DESC
+    en: "width"
+    de: "Breite"
+
 TYPES
 
   //
@@ -182,14 +213,23 @@ TYPES
     = WAY ("highway"=="motorway")
       {Name, NameAlt, Ref, Destination}
       PATH[CAR] LOCATION OPTIMIZE_LOW_ZOOM PIN_WAY
+      DESC
+        en: "motorway"
+        de: "Autobahn"
+
   TYPE highway_motorway_trunk
     = WAY ("highway"=="trunk" AND EXISTS "motorroad" AND !("motorroad" IN ["no","false","0"]))
       {Name, NameAlt, Ref, Destination}
       PATH[CAR] LOCATION OPTIMIZE_LOW_ZOOM PIN_WAY
+      DESC
+        en: "trunk"
+        de: "Schnellstraße"
+
   TYPE highway_motorway_primary
     = WAY ("highway"=="primary" AND EXISTS "motorroad" AND !("motorroad" IN ["no","false","0"]))
       {Name, NameAlt, Ref, Destination}
       PATH[CAR] LOCATION OPTIMIZE_LOW_ZOOM PIN_WAY
+
   TYPE highway_motorway_link
     = WAY ("highway"=="motorway_link")
       {Name, NameAlt, Ref, Destination}
@@ -201,6 +241,9 @@ TYPES
     = WAY ("highway"=="trunk")
       {Name, NameAlt, Ref, Destination}
       PATH[FOOT BICYCLE CAR] LOCATION OPTIMIZE_LOW_ZOOM PIN_WAY
+      DESC
+        en: "trunk"
+        de: "Schnellstraße"
 
   TYPE highway_trunk_link
     = WAY ("highway"=="trunk_link")
@@ -261,11 +304,17 @@ TYPES
     = WAY AREA ("highway"=="living_street")
       {Name, NameAlt}
       PATH[FOOT BICYCLE CAR] LOCATION PIN_WAY
+      DESC
+        en: "living street"
+        de: "Spielstraße"
 
   TYPE highway_service
     = WAY AREA ("highway"=="service")
       {Name, NameAlt}
       PATH[FOOT BICYCLE CAR] LOCATION
+      DESC
+        en: "service"
+        de: "Erschließungsweg"
 
   // Ways with main designation different to car
 
@@ -273,26 +322,41 @@ TYPES
     = WAY AREA ("highway"=="track")
       {Name, NameAlt}
       PATH[FOOT BICYCLE] LOCATION PIN_WAY
+      DESC
+        en: "track"
+        de: "Wirtschaftsweg"
 
   TYPE highway_pedestrian
     = WAY AREA ("highway"=="pedestrian")
       {Name, NameAlt}
       PATH[FOOT] LOCATION PIN_WAY MERGE_AREAS
+      DESC
+        en: "pedestrian"
+        de: "Fußgängerzone"
 
   TYPE highway_path
     = WAY AREA ("highway"=="path")
       {Name, NameAlt}
       PATH[FOOT BICYCLE] IGNORESEALAND PIN_WAY
+      DESC
+        en: "path"
+        de: "Merhzweckweg"
 
   TYPE highway_cycleway
     = WAY ("highway"=="cycleway")
       {Name, NameAlt}
-      PATH[BICYCLE] PIN_WAY
+      PATH[FOOT BICYCLE] PIN_WAY
+      DESC
+        en: "cycleway"
+        de: "Fahradweg"
 
   TYPE highway_footway
     = WAY AREA ("highway"=="footway") OR AREA ("area:highway"=="footway")
       {Name, NameAlt}
       PATH[FOOT] LOCATION PIN_WAY
+      DESC
+        en: "cycleway"
+        de: "Fußweg"
 
   TYPE highway_via_ferrata_easy
     = WAY (("highway"=="via_ferrata") AND (("via_ferrata_scale"=="0") OR ("via_ferrata_scale"=="1")))
@@ -337,7 +401,6 @@ TYPES
   TYPE highway_bus_stop
     = NODE ("highway"=="bus_stop" OR (!("bus" IN ["no", "false", "0"]) AND "public_transport"=="platform"))
       {Name, NameAlt}
-      POI
 
   TYPE highway_turning_cycle
     = NODE ("highway"=="turning_cycle")
@@ -437,7 +500,7 @@ TYPES
   TYPE railway_rail
     = WAY ("railway"=="rail")
       {Bridge, Tunnel, Width}
-      //OPTIMIZE_LOW_ZOOM
+      OPTIMIZE_LOW_ZOOM
 
   TYPE railway_tram
     = WAY ("railway"=="tram")
@@ -446,14 +509,16 @@ TYPES
   TYPE railway_light_rail
     = WAY ("railway"=="light_rail")
       {Bridge, Tunnel, Width}
+      OPTIMIZE_LOW_ZOOM
 
   TYPE railway_subway
     = WAY ("railway"=="subway")
-      {Bridge, Tunnel, Width}
+      {Name, Bridge, Tunnel, Width}
 
   TYPE railway_preserved
     = WAY ("railway"=="preserved")
-      {Bridge, Tunnel, Width}
+      {Name, Bridge, Tunnel, Width}
+      OPTIMIZE_LOW_ZOOM
 
   TYPE railway_disused
     = WAY ("railway"=="disused")
@@ -465,15 +530,16 @@ TYPES
 
   TYPE railway_narrow_gauge
     = WAY ("railway"=="narrow_gauge")
-      PATH
+      {Name, Bridge, Tunnel, Width}
+      OPTIMIZE_LOW_ZOOM
 
   TYPE railway_monorail
     = WAY ("railway"=="monorail")
-      PATH
+      {Name, Bridge, Tunnel, Width}
 
   TYPE railway_funicular
     = WAY ("railway"=="funicular")
-      {Name}
+      {Name, Bridge, Tunnel, Width}
 
   TYPE railway_station
     = NODE AREA ("railway"=="station")
@@ -487,7 +553,6 @@ TYPES
   TYPE railway_tram_stop
     = NODE ("railway"=="tram_stop")
       {Name, NameAlt}
-      POI
 
   TYPE railway_crossing
     = NODE ("railway"=="crossing")
@@ -627,12 +692,6 @@ TYPES
   TYPE landuse_construction
     = NODE AREA ("landuse"=="construction")
       {Name, NameAlt} MERGE_AREAS
-      GROUP landuse
-
-  TYPE landuse_farm
-    = AREA ("landuse"=="farm")
-      {Name, NameAlt}
-      OPTIMIZE_LOW_ZOOM MERGE_AREAS
       GROUP landuse
 
   TYPE landuse_farmland
@@ -929,7 +988,7 @@ TYPES
       ADDRESS OPTIMIZE_LOW_ZOOM POI
 
   TYPE leisure_swimming_pool
-    = NODE AREA ("leisure"=="swimming_pool")
+    = NODE AREA ("leisure"=="swimming_pool" AND !("covered" IN ["yes"]) AND !("indoor" IN ["yes"]))
       {Name, NameAlt}
       ADDRESS OPTIMIZE_LOW_ZOOM POI
 
@@ -984,7 +1043,6 @@ TYPES
   TYPE amenity_atm
     = NODE AREA ("amenity"=="atm")
       {Name, NameAlt}
-      POI
       GROUP amenity
 
   TYPE amenity_bank_building
@@ -1110,7 +1168,19 @@ TYPES
       GROUP amenity, building
 
   TYPE amenity_kindergarten
-    = NODE ("amenity"=="kindergarten")
+    = NODE AREA ("amenity"=="kindergarten")
+      {Name, NameAlt}
+      ADDRESS POI
+      GROUP amenity
+
+  TYPE amenity_library_building
+    = AREA ("amenity"=="library" AND EXISTS "building" AND !("building" IN ["no","false","0"]))
+      {Name, NameAlt}
+      ADDRESS POI
+      GROUP amenity
+
+  TYPE amenity_library
+    = NODE AREA ("amenity"=="library")
       {Name, NameAlt}
       ADDRESS POI
       GROUP amenity
@@ -1871,7 +1941,7 @@ TYPES
   TYPE place_peninsula IGNORE
     = NODE AREA ("place"=="peninsula")
       {Name, NameAlt}
-      
+
   TYPE place_country
     = NODE ("place"=="country")
       {Name, NameAlt, IsIn}

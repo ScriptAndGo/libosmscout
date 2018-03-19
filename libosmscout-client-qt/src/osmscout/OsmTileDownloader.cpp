@@ -23,9 +23,12 @@
 #include <osmscout/OsmTileDownloader.h>
 #include <osmscout/OnlineTileProvider.h>
 #include <osmscout/DBThread.h>
+#include <osmscout/OSMScoutQt.h>
 
-OsmTileDownloader::OsmTileDownloader(QString diskCacheDir):
-  serverNumber(qrand())
+OsmTileDownloader::OsmTileDownloader(QString diskCacheDir,
+                                     const OnlineTileProvider &provider):
+  serverNumber(qrand()),
+  tileProvider(provider)
 {
   connect(&webCtrl, SIGNAL (finished(QNetworkReply*)),  this, SLOT (fileDownloaded(QNetworkReply*)));
  
@@ -41,21 +44,14 @@ OsmTileDownloader::OsmTileDownloader(QString diskCacheDir):
   
   diskCache.setCacheDirectory(diskCacheDir);
   webCtrl.setCache(&diskCache);
-
-  SettingsRef settings=DBThread::GetInstance()->GetSettings();
-  
-  connect(settings.get(), SIGNAL(OnlineTileProviderIdChanged(const QString)),
-          this, SLOT(onlineTileProviderChanged()));
-  
-  tileProvider = settings->GetOnlineTileProvider();
 }
 
 OsmTileDownloader::~OsmTileDownloader() {
 }
 
-void OsmTileDownloader::onlineTileProviderChanged()
+void OsmTileDownloader::onlineTileProviderChanged(const OnlineTileProvider &provider)
 {
-  tileProvider = DBThread::GetInstance()->GetSettings()->GetOnlineTileProvider();
+  tileProvider=provider;
   requests.clear();
 }
 
@@ -84,7 +80,7 @@ void OsmTileDownloader::download(uint32_t zoomLevel, uint32_t x, uint32_t y)
   requests.insert(tileUrl, key);
   
   QNetworkRequest request(tileUrl);
-  request.setHeader(QNetworkRequest::UserAgentHeader, QString(OSMSCOUT_USER_AGENT).arg(OSMSCOUT_VERSION_STRING));
+  request.setHeader(QNetworkRequest::UserAgentHeader, OSMScoutQt::GetInstance().GetUserAgent());
   //request.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
   webCtrl.get(request);
 }

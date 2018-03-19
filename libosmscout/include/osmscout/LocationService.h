@@ -26,215 +26,195 @@
 #include <osmscout/Database.h>
 #include <osmscout/Location.h>
 
+#include <osmscout/util/StringMatcher.h>
+#include <osmscout/util/Breaker.h>
+
 namespace osmscout {
 
   /**
    * \ingroup Location
    *
-   * Description of a location based on the GeoCoord of that location.
+   * Parameter object for form based search of a POI (point of interest)
    */
-  class OSMSCOUT_API LocationCoordDescription
+  class OSMSCOUT_API POIFormSearchParameter CLASS_FINAL
   {
   private:
-    GeoCoord location;
+    std::string             adminRegionSearchString; //!< The search string to match the admin region name against
+    std::string             poiSearchString;         //!< The search string to match the postal area name against
 
+    bool                    adminRegionOnlyMatch;    //!< Evaluate on direct admin region matches
+    bool                    poiOnlyMatch;            //!< Evaluate on direct poi matches
+
+    bool                    partialMatch;            //!< Add matches to the result, event if they do not match the complete search string
+
+    StringMatcherFactoryRef stringMatcherFactory;    //!< String matcher factory to use
+
+    size_t                  limit;                   //!< The maximum number of results over all sub searches requested
+
+    BreakerRef              breaker;                 //!< Breaker for search
   public:
-    LocationCoordDescription(const GeoCoord& location);
+    explicit POIFormSearchParameter();
 
-    GeoCoord GetLocation() const;
-  };
+    std::string GetAdminRegionSearchString() const;
+    std::string GetPOISearchString() const;
 
-  //! \ingroup Location
-  //! Reference counted reference to a LocationCoordDescription instance
-  typedef std::shared_ptr<LocationCoordDescription> LocationCoordDescriptionRef;
+    bool GetAdminRegionOnlyMatch() const;
+    bool GetPOIOnlyMatch() const;
 
-  class OSMSCOUT_API LocationDescriptionCandicate
-  {
-  private:
-    ObjectFileRef ref;
-    std::string   name;
-    double        distance;
-    double        bearing;
-    bool          atPlace;
-    double        size;
+    bool GetPartialMatch() const;
 
-  public:
-    inline LocationDescriptionCandicate(const ObjectFileRef &ref,
-                                        const std::string& name,
-                                        const double distance,
-                                        const double bearing,
-                                        const bool atPlace,
-                                        const double size)
-    : ref(ref),
-      name(name),
-      distance(distance),
-      bearing(bearing),
-      atPlace(atPlace),
-      size(size)
-    {
-    }
+    StringMatcherFactoryRef GetStringMatcherFactory() const;
 
-    inline ObjectFileRef GetRef() const
-    {
-      return ref;
-    }
+    size_t GetLimit() const;
 
-    inline std::string GetName() const
-    {
-      return name;
-    }
+    void SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory);
 
-    inline double GetDistance() const
-    {
-      return distance;
-    }
+    void SetAdminRegionSearchString(const std::string& adminRegionSearchString);
+    void SetPOISearchString(const std::string& poiSearchString);
 
-    inline double GetBearing() const
-    {
-      return bearing;
-    }
+    void SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch);
+    void SetPOIOnlyMatch(bool poiOnlyMatch);
 
-    inline bool IsAtPlace() const
-    {
-      return atPlace;
-    }
+    void SetPartialMatch(bool partialMatch);
 
-    inline double GetSize() const
-    {
-      return size;
-    }
+    void SetLimit(size_t limit);
+
+    void SetBreaker(BreakerRef &breaker);
+    BreakerRef GetBreaker() const;
+    bool IsAborted() const;
   };
 
   /**
    * \ingroup Location
    *
-   * Description of a location based on the GeoCoord of that location.
+   * Parameter object for form based search of a location
    */
-  class OSMSCOUT_API LocationAtPlaceDescription
+  class OSMSCOUT_API LocationFormSearchParameter CLASS_FINAL
   {
   private:
-    Place  place;     //!< Place
-    bool   atPlace;   //!< 'true' if at the place itself
-    double distance;  //!< distance to the place
-    double bearing;   //!< bearing to take from place to reach location
+    std::string             adminRegionSearchString; //!< The search string to match the admin region name against
+    std::string             postalAreaSearchString;  //!< The search string to match the postal area name against
+    std::string             locationSearchString;    //!< The search string to match the postal location name against
+    std::string             addressSearchString;     //!< The search string to match the address name against
 
+    bool                    adminRegionOnlyMatch;    //!< Evaluate on direct admin region matches
+    bool                    postalAreaOnlyMatch;     //!< Evaluate on direct postal area matches
+    bool                    locationOnlyMatch;       //!< Evaluate on direct location matches
+    bool                    addressOnlyMatch;        //!< Evaluate on direct address matches
+
+    bool                    partialMatch;            //!< Add matches to the result, event if they do not match the complete search string
+
+    StringMatcherFactoryRef stringMatcherFactory;    //!< String matcher factory to use
+    size_t                  limit;                   //!< The maximum number of results over all sub searches requested
+
+    BreakerRef              breaker;                 //!< Breaker for search
   public:
-    LocationAtPlaceDescription(const Place& place);
-    LocationAtPlaceDescription(const Place& place,
-                               double distance,
-                               double bearing);
+    explicit LocationFormSearchParameter();
 
-    /**
-     * Return the place this information is refering to
-     */
-    inline Place GetPlace() const
-    {
-      return place;
-    }
+    std::string GetAdminRegionSearchString() const;
+    std::string GetPostalAreaSearchString() const;
+    std::string GetLocationSearchString() const;
+    std::string GetAddressSearchString() const;
 
-    /**
-     * 'true' if the location is at the place itself (in spite of 'close to...')
-     */
-    inline bool IsAtPlace() const
-    {
-      return atPlace;
-    }
+    bool GetAdminRegionOnlyMatch() const;
+    bool GetPostalAreaOnlyMatch() const;
+    bool GetLocationOnlyMatch() const;
+    bool GetAddressOnlyMatch() const;
 
-    /**
-     * Return the distance to the location in meter
-     */
-    inline double GetDistance() const
-    {
-      return distance;
-    }
+    bool GetPartialMatch() const;
 
-    /**
-     * Return the bearing you have to go to from the place for 'distance' meter to reach the location
-     */
-    inline double GetBearing() const
-    {
-      return bearing;
-    }
-  };
+    StringMatcherFactoryRef GetStringMatcherFactory() const;
 
-  //! \ingroup Location
-  //! Reference counted reference to a LocationAtPlaceDescription instance
-  typedef std::shared_ptr<LocationAtPlaceDescription> LocationAtPlaceDescriptionRef;
+    size_t GetLimit() const;
 
+    void SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory);
 
-  /**
-   * \ingroup Location
-   *
-   * A LocationDescription objects holds various alternative (and optional) descriptions
-   * of the given locations.
-   */
-  class OSMSCOUT_API LocationDescription
-  {
-  private:
-    LocationCoordDescriptionRef   coordDescription;
-    LocationAtPlaceDescriptionRef atNameDescription;
-    LocationAtPlaceDescriptionRef atAddressDescription;
-    LocationAtPlaceDescriptionRef atPOIDescription;
+    void SetAdminRegionSearchString(const std::string& adminRegionSearchString);
+    void SetPostalAreaSearchString(const std::string& postalAreaSearchString);
+    void SetLocationSearchString(const std::string& locationSearchString);
+    void SetAddressSearchString(const std::string& addressSearchString);
 
-  public:
-    void SetCoordDescription(const LocationCoordDescriptionRef& description);
-    void SetAtNameDescription(const LocationAtPlaceDescriptionRef& description);
-    void SetAtAddressDescription(const LocationAtPlaceDescriptionRef& description);
-    void SetAtPOIDescription(const LocationAtPlaceDescriptionRef& description);
+    void SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch);
+    void SetPostalAreaOnlyMatch(bool postalAreaOnlyMatch);
+    void SetLocationOnlyMatch(bool locationOnlyMatch);
+    void SetAddressOnlyMatch(bool addressOnlyMatch);
 
-    /**
-     * Return the location is geo coordinates
-     * @return
-     */
-    LocationCoordDescriptionRef GetCoordDescription() const;
+    void SetPartialMatch(bool partialMatch);
 
-    /**
-     * Return the location in relation to a named object
-     * @return
-     */
-    LocationAtPlaceDescriptionRef GetAtNameDescription() const;
+    void SetLimit(size_t limit);
 
-    /**
-     * Return the location in relation to a close address
-     * @return
-     */
-    LocationAtPlaceDescriptionRef GetAtAddressDescription() const;
-
-    /**
-     * Return the location in relation to a close POI
-     * @return
-     */
-    LocationAtPlaceDescriptionRef GetAtPOIDescription() const;
+    void SetBreaker(BreakerRef &breaker);
+    BreakerRef GetBreaker() const;
+    bool IsAborted() const;
   };
 
   /**
    * \ingroup Location
    *
-   * Object holding a search request for to lookup one
-   * or more locations based on search patterns for the
-   * region, the location and a address.
+   * Parameter object for string pattern based search for a location or a POI
    */
-  class OSMSCOUT_API LocationSearch
+  class OSMSCOUT_API LocationStringSearchParameter CLASS_FINAL
   {
-  public:
-    /**
-     * \ingroup Location
-     *
-     * One singular name pattern match query
-     */
-    class OSMSCOUT_API Entry
-    {
-    public:
-      std::string adminRegionPattern; //!< name pattern, the admin region must match, empty if no filtering by admin region requested
-      std::string locationPattern;    //!< name pattern, the location must match, empty if no filtering by location requested
-      std::string addressPattern;     //!< name pattern, the address must match, empty if no filtering by address requested
-    };
+  private:
+    AdminRegionRef          defaultAdminRegion;   //!< A default admin region to use, if no admin region was found based on the search string
+
+    bool                    searchForLocation;    //!< Search for a location
+    bool                    searchForPOI;         //!< Search for a POI
+
+    bool                    adminRegionOnlyMatch; //!< Evaluate on direct admin region matches
+    bool                    poiOnlyMatch;         //!< Evaluate on direct poi matches
+    bool                    locationOnlyMatch;    //!< Evaluate on direct location matches
+    bool                    addressOnlyMatch;     //!< Evaluate on direct address matches
+
+    bool                    partialMatch;         //!< Add matches to the result, event if they do not match the complete search string
+
+    std::string             searchString;         //!< The search string itself, must bot be empty
+    StringMatcherFactoryRef stringMatcherFactory; //!< String matcher factory to use
+
+    size_t                  limit;                //!< The maximum number of results over all sub searches requested
+
+    BreakerRef              breaker;              //!< Breaker for search
 
   public:
-    std::list<Entry> searches; //!< List of search entries, the queries are OR'ed
-    size_t           limit;    //!< The maximum number of results over all sub searches requested
+    explicit LocationStringSearchParameter(const std::string& searchString);
 
-    LocationSearch();
+    AdminRegionRef GetDefaultAdminRegion() const;
+
+    bool GetSearchForLocation() const;
+    bool GetSearchForPOI() const;
+
+    bool GetAdminRegionOnlyMatch() const;
+    bool GetPOIOnlyMatch() const;
+    bool GetLocationOnlyMatch() const;
+    bool GetAddressOnlyMatch() const;
+
+    bool GetPartialMatch() const;
+
+    std::string GetSearchString() const;
+
+    StringMatcherFactoryRef GetStringMatcherFactory() const;
+
+    size_t GetLimit() const;
+
+    void SetDefaultAdminRegion(const AdminRegionRef& adminRegion);
+
+    void SetSearchForLocation(bool searchForLocation);
+    void SetSearchForPOI(bool searchForPOI);
+
+    void SetAdminRegionOnlyMatch(bool adminRegionOnlyMatch);
+    void SetPOIOnlyMatch(bool poiOnlyMatch);
+    void SetLocationOnlyMatch(bool locationOnlyMatch);
+    void SetAddressOnlyMatch(bool addressOnlyMatch);
+
+    void SetPartialMatch(bool partialMatch);
+
+    void SetStringMatcherFactory(const StringMatcherFactoryRef& stringMatcherFactory);
+
+    void SetLimit(size_t limit);
+
+    void SetBreaker(BreakerRef &breaker);
+    BreakerRef GetBreaker() const;
+    bool IsAborted() const;
   };
 
   /**
@@ -257,6 +237,8 @@ namespace osmscout {
     public:
       AdminRegionRef adminRegion;
       MatchQuality   adminRegionMatchQuality;
+      PostalAreaRef  postalArea;
+      MatchQuality   postalAreaMatchQuality;
       LocationRef    location;
       MatchQuality   locationMatchQuality;
       POIRef         poi;
@@ -296,247 +278,41 @@ namespace osmscout {
   class OSMSCOUT_API LocationService
   {
   private:
-    /**
-     * \ingroup Location
-     *
-     * Matching algorithm that can compare names regardless of their case.
-     * Defined abstract because this function is used in the classes
-     * \see AdminRegionVisitor
-     * \see LocationMatchVisitor
-     * \see AddressMatchVisitor
-     */
-     class VisitorMatcher
-     {
-     public:
-       VisitorMatcher(const std::string& pattern);
-
-     protected:
-       std::string              pattern;
-
-     protected:
-       void Match(const std::string& name,
-                  bool& match,
-                  bool& candidate) const;
-
-     private:
-       void TolowerUmlaut(std::string& s) const;
-     };
-
-    class AdminRegionMatchVisitor : public AdminRegionVisitor, public VisitorMatcher
-    {
-    public:
-      class AdminRegionResult
-      {
-      public:
-        AdminRegionRef adminRegion;
-        bool           isMatch;
-      };
-
-    private:
-      size_t                       limit;
-
-    public:
-      std::list<AdminRegionResult> results;
-      bool                         limitReached;
-
-    public:
-      AdminRegionMatchVisitor(const std::string& pattern,
-                              size_t limit);
-
-      Action Visit(const AdminRegion& region);
-    };
-
-    /**
-     * \ingroup Location
-     *
-     * Visitor that gets called for every location found in the given region.
-     * It is the task of the visitor to decide if a location matches the given criteria.
-     */
-    class LocationMatchVisitor : public LocationVisitor, public VisitorMatcher
-    {
-    public:
-      class POIResult
-      {
-      public:
-        AdminRegionRef adminRegion;
-        POIRef         poi;
-        bool           isMatch;
-      };
-
-      class LocationResult
-      {
-      public:
-        AdminRegionRef adminRegion;
-        LocationRef    location;
-        bool           isMatch;
-      };
-
-    private:
-      size_t              limit;
-
-    public:
-      AdminRegionRef            adminRegion;
-      std::list<POIResult>      poiResults;
-      std::list<LocationResult> locationResults;
-      bool                      limitReached;
-
-    public:
-      LocationMatchVisitor(const AdminRegionRef& adminRegion,
-                           const std::string& pattern,
-                           size_t limit);
-
-      bool Visit(const AdminRegion& adminRegion,
-                 const POI &poi);
-      bool Visit(const AdminRegion& adminRegion,
-                 const Location &location);
-    };
-
-    /**
-     * \ingroup Location
-     *
-     */
-    class AddressMatchVisitor : public AddressVisitor, public VisitorMatcher
-    {
-    public:
-      class AddressResult
-      {
-      public:
-        AdminRegionRef adminRegion;
-        LocationRef    location;
-        AddressRef     address;
-        bool           isMatch;
-      };
-
-    private:
-      size_t                   limit;
-
-    public:
-      std::list<AddressResult> results;
-      bool                     limitReached;
-
-    public:
-      AddressMatchVisitor(const std::string& pattern,
-                          size_t limit);
-
-      bool Visit(const AdminRegion& adminRegion,
-                 const Location& location,
-                 const Address& address);
-    };
-
-  public:
-    /**
-     * \ingroup Location
-     *
-     * Result of a location reverse lookup
-     */
-    struct OSMSCOUT_API ReverseLookupResult
-    {
-      ObjectFileRef  object;      //!< object used for lookup
-      AdminRegionRef adminRegion; //!< Region the object is in, if set
-      POIRef         poi;         //!< POI data, if set
-      LocationRef    location;    //!< Location data, if set
-      AddressRef     address;     //!< Address data if set
-    };
-
-  private:
     DatabaseRef database;
 
-  private:
-    static bool DistanceComparator(const LocationDescriptionCandicate &a,
-                                   const LocationDescriptionCandicate &b);
-
-    const FeatureValueBufferRef GetObjectFeatureBuffer(const ObjectFileRef &object);
-
-    Place GetPlace(const std::list<ReverseLookupResult>& lookupResult);
-
-    bool HandleAdminRegion(const LocationSearch& search,
-                           const LocationSearch::Entry& searchEntry,
-                           const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                           LocationSearchResult& result) const;
-
-    bool HandleAdminRegionLocation(const LocationSearch& search,
-                                   const LocationSearch::Entry& searchEntry,
-                                   const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                   const LocationMatchVisitor::LocationResult& locationResult,
-                                   LocationSearchResult& result) const;
-
-    bool HandleAdminRegionPOI(const LocationSearch& search,
-                              const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                              const LocationMatchVisitor::POIResult& poiResult,
-                              LocationSearchResult& result) const;
-
-    bool HandleAdminRegionLocationAddress(const LocationSearch& search,
-                                          const AdminRegionMatchVisitor::AdminRegionResult& adminRegionResult,
-                                          const LocationMatchVisitor::LocationResult& locationResult,
-                                          const AddressMatchVisitor::AddressResult& addressResult,
-                                          LocationSearchResult& result) const;
-
   public:
-    LocationService(const DatabaseRef& database);
+    explicit LocationService(const DatabaseRef& database);
 
     bool VisitAdminRegions(AdminRegionVisitor& visitor) const;
-
-    bool VisitAdminRegionLocations(const AdminRegion& region,
-                                   LocationVisitor& visitor) const;
-
-    bool VisitLocationAddresses(const AdminRegion& region,
-                                const Location& location,
-                                AddressVisitor& visitor) const;
 
     bool ResolveAdminRegionHierachie(const AdminRegionRef& adminRegion,
                                      std::map<FileOffset,AdminRegionRef >& refs) const;
 
-    bool InitializeLocationSearchEntries(const std::string& searchPattern,
-                                         LocationSearch& search);
+    bool VisitAdminRegionLocations(const AdminRegion& region,
+                                   const PostalArea& postalArea,
+                                   LocationVisitor& visitor) const;
 
-    bool SearchForLocations(const LocationSearch& search,
+    bool VisitAdminRegionPOIs(const AdminRegion& region,
+                              POIVisitor& visitor) const;
+
+    bool VisitLocationAddresses(const AdminRegion& region,
+                                const PostalArea& postalArea,
+                                const Location& location,
+                                AddressVisitor& visitor) const;
+
+    bool SearchForLocationByString(const LocationStringSearchParameter& searchParameter,
+                                   LocationSearchResult& result) const;
+
+    bool SearchForLocationByForm(const LocationFormSearchParameter& searchParameter,
+                                 LocationSearchResult& result) const;
+
+    bool SearchForPOIByForm(const POIFormSearchParameter& searchParameter,
                             LocationSearchResult& result) const;
 
-    bool ReverseLookupObjects(const std::list<ObjectFileRef>& objects,
-                              std::list<ReverseLookupResult>& result) const;
-    bool ReverseLookupObject(const ObjectFileRef& object,
-                              std::list<ReverseLookupResult>& result) const;
-
-    bool DescribeLocation(const GeoCoord& location,
-                          LocationDescription& description);
-
-    /**
-     * Load areas of given types near to location.
-     * 
-     * @param location
-     * @param types
-     * @param candidates - unsorted result buffer
-     * @param maxDistance - lookup distance in meters
-     * @return true if no error (it don't indicate non-empty result)
-     */
-    bool LoadNearAreas(const GeoCoord& location, const TypeInfoSet &types,
-                       std::vector<LocationDescriptionCandicate> &candidates,
-                       const double maxDistance=100);
-
-    /**
-     * @see LoadNearAreas
-     */
-    bool LoadNearNodes(const GeoCoord& location, const TypeInfoSet &types,
-                       std::vector<LocationDescriptionCandicate> &candidates,
-                       const double maxDistance=100);
-
-    bool DescribeLocationByName(const GeoCoord& location,
-                                LocationDescription& description,
-                                const double lookupDistance=100,
-                                const double sizeFilter=1.0);
-
-    bool DescribeLocationByAddress(const GeoCoord& location,
-                                   LocationDescription& description,
-                                   const double lookupDistance=100,
-                                   const double sizeFilter=1.0);
-
-    bool DescribeLocationByPOI(const GeoCoord& location,
-                               LocationDescription& description,
-                               const double lookupDistance=100,
-                               const double sizeFilter=1.0);
   };
 
   //! \ingroup Service
+  //! \ingroup Location
   //! Reference counted reference to a location service instance
   typedef std::shared_ptr<LocationService> LocationServiceRef;
 }

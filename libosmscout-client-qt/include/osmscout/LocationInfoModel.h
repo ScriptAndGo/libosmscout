@@ -27,14 +27,14 @@
 #include <osmscout/GeoCoord.h>
 #include <osmscout/util/GeoBox.h>
 
-#include <osmscout/DBThread.h>
+#include <osmscout/LookupModule.h>
 
 /**
  * \ingroup QtAPI
  */
 struct ObjectKey{
- QString                  database;
- osmscout::ObjectFileRef  ref;
+  QString                  database;
+  osmscout::ObjectFileRef  ref;
 };
 
 Q_DECLARE_METATYPE(ObjectKey)
@@ -50,6 +50,7 @@ class OSMSCOUT_CLIENT_QT_API LocationInfoModel : public QAbstractListModel
 signals:
     void locationDescriptionRequested(const osmscout::GeoCoord location);
     void readyChange(bool ready);
+    void regionLookupRequested(osmscout::GeoCoord);
 
 public slots:
     void setLocation(const double lat, const double lon);
@@ -59,6 +60,9 @@ public slots:
                                const osmscout::LocationDescription description,
                                const QStringList regions);
     void onLocationDescriptionFinished(const osmscout::GeoCoord);
+
+    void onLocationAdminRegions(const osmscout::GeoCoord,QList<AdminRegionInfoRef>);
+    void onLocationAdminRegionFinished(const osmscout::GeoCoord);
 
 public:
     enum Roles {
@@ -100,7 +104,9 @@ public:
     
     static bool distanceComparator(const QMap<int, QVariant> &obj1,
                                    const QMap<int, QVariant> &obj2);
-    
+
+    static bool adminRegionComparator(const AdminRegionInfoRef& reg1,
+                                      const AdminRegionInfoRef& reg2);
 private: 
    void addToModel(const QString database,
                    const osmscout::LocationAtPlaceDescriptionRef description,
@@ -113,6 +119,7 @@ private:
 
     QList<ObjectKey> objectSet; // set of objects already inserted to model
     QList<QMap<int, QVariant>> model;
+    LookupModule* lookupModule;
     
 };
 

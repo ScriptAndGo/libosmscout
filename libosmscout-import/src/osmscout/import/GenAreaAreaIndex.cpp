@@ -33,7 +33,6 @@
 #include <osmscout/util/FileScanner.h>
 #include <osmscout/util/GeoBox.h>
 #include <osmscout/util/Geometry.h>
-#include <osmscout/util/String.h>
 
 #include <osmscout/import/GenOptimizeAreaWayIds.h>
 
@@ -44,23 +43,24 @@ namespace osmscout {
   class AreaLocationProcessorFilter : public SortDataGenerator<Area>::ProcessingFilter
   {
   private:
-    FileWriter                 writer;
-    uint32_t                   overallDataCount;
-    NameFeatureValueReader     *nameReader;
-    LocationFeatureValueReader *locationReader;
-    AddressFeatureValueReader  *addressReader;
+    FileWriter                   writer;
+    uint32_t                     overallDataCount;
+    NameFeatureValueReader       *nameReader;
+    LocationFeatureValueReader   *locationReader;
+    AddressFeatureValueReader    *addressReader;
+    PostalCodeFeatureValueReader *postalCodeReader;
 
   public:
     bool BeforeProcessingStart(const ImportParameter& parameter,
                                Progress& progress,
-                               const TypeConfig& typeConfig);
+                               const TypeConfig& typeConfig) override;
     bool Process(Progress& progress,
                  const FileOffset& offset,
                  Area& area,
-                 bool& save);
+                 bool& save) override;
     bool AfterProcessingEnd(const ImportParameter& parameter,
                             Progress& progress,
-                            const TypeConfig& typeConfig);
+                            const TypeConfig& typeConfig) override;
   };
 
   bool AreaLocationProcessorFilter::BeforeProcessingStart(const ImportParameter& parameter,
@@ -72,6 +72,7 @@ namespace osmscout {
     nameReader=new NameFeatureValueReader(typeConfig);
     locationReader=new LocationFeatureValueReader(typeConfig);
     addressReader=new AddressFeatureValueReader(typeConfig);
+    postalCodeReader= new PostalCodeFeatureValueReader(typeConfig);
 
     try {
       writer.Open(AppendFileToDir(parameter.GetDestinationDirectory(),
@@ -94,24 +95,28 @@ namespace osmscout {
   {
     try {
       for (auto& ring : area.rings) {
-        NameFeatureValue     *nameValue=nameReader->GetValue(ring.GetFeatureValueBuffer());
-        LocationFeatureValue *locationValue=locationReader->GetValue(ring.GetFeatureValueBuffer());
-        AddressFeatureValue  *addressValue=addressReader->GetValue(ring.GetFeatureValueBuffer());
+        NameFeatureValue       *nameValue=nameReader->GetValue(ring.GetFeatureValueBuffer());
+        LocationFeatureValue   *locationValue=locationReader->GetValue(ring.GetFeatureValueBuffer());
+        AddressFeatureValue    *addressValue=addressReader->GetValue(ring.GetFeatureValueBuffer());
+        PostalCodeFeatureValue *postalCodeValue=postalCodeReader->GetValue(ring.GetFeatureValueBuffer());
 
         std::string          name;
         std::string          location;
         std::string          address;
+        std::string          postalCode;
 
-        if (nameValue!=NULL) {
+        if (nameValue!=nullptr) {
           name=nameValue->GetName();
         }
 
-        if (locationValue!=NULL) {
+        if (locationValue!=nullptr &&
+            addressValue!=nullptr) {
           location=locationValue->GetLocation();
+          address=addressValue->GetAddress();
         }
 
-        if (addressValue!=NULL) {
-          address=addressValue->GetAddress();
+        if (postalCodeValue!=nullptr) {
+          postalCode=postalCodeValue->GetPostalCode();
         }
 
         bool isAddress=!ring.GetType()->GetIgnore() &&
@@ -120,12 +125,27 @@ namespace osmscout {
 
         bool isPoi=!name.empty() && ring.GetType()->GetIndexAsPOI();
 
-        size_t locationIndex;
+        // We only need location info during import up to this point
+        // Thus we delete it now to safe disk space
+        if (locationValue!=nullptr) {
+          size_t locationIndex;
 
-        if (locationReader->GetIndex(ring.GetFeatureValueBuffer(),
-                                     locationIndex) &&
-            ring.GetFeatureValueBuffer().HasFeature(locationIndex)) {
-          ring.UnsetFeature(locationIndex);
+          if (locationReader->GetIndex(ring.GetFeatureValueBuffer(),
+                                       locationIndex) &&
+              ring.GetFeatureValueBuffer().HasFeature(locationIndex)) {
+            ring.UnsetFeature(locationIndex);
+          }
+        }
+
+        // Same for postal code
+        if (postalCodeValue!=nullptr) {
+          size_t postalCodeIndex;
+
+          if (postalCodeReader->GetIndex(ring.GetFeatureValueBuffer(),
+                                         postalCodeIndex) &&
+              ring.GetFeatureValueBuffer().HasFeature(postalCodeIndex)) {
+            ring.UnsetFeature(postalCodeIndex);
+          }
         }
 
         if (!isAddress && !isPoi) {
@@ -138,9 +158,12 @@ namespace osmscout {
             if (r.IsOuterRing()) {
               writer.WriteFileOffset(offset);
               writer.WriteNumber(ring.GetType()->GetAreaId());
+
               writer.Write(name);
+              writer.Write(postalCode);
               writer.Write(location);
               writer.Write(address);
+
               writer.Write(r.nodes,false);
 
               overallDataCount++;
@@ -150,9 +173,12 @@ namespace osmscout {
         else {
           writer.WriteFileOffset(offset);
           writer.WriteNumber(ring.GetType()->GetAreaId());
+
           writer.Write(name);
+          writer.Write(postalCode);
           writer.Write(location);
           writer.Write(address);
+
           writer.Write(ring.nodes,false);
 
           overallDataCount++;
@@ -172,13 +198,16 @@ namespace osmscout {
                                                        const TypeConfig& /*typeConfig*/)
   {
     delete nameReader;
-    nameReader=NULL;
+    nameReader=nullptr;
 
     delete locationReader;
-    locationReader=NULL;
+    locationReader=nullptr;
 
     delete addressReader;
-    addressReader=NULL;
+    addressReader=nullptr;
+
+    delete postalCodeReader;
+    postalCodeReader=nullptr;
 
     try {
       writer.SetPos(0);
@@ -310,7 +339,7 @@ namespace osmscout {
 
       if (reduced) {
         if (nodeBuffer.size()<3) {
-          progress.Debug("Area " + NumberToString(offset) + " empty/invalid ring removed after node reduction");
+          progress.Debug("Area " + std::to_string(offset) + " empty/invalid ring removed after node reduction");
           ring=area.rings.erase(ring);
 
           if (area.rings.size()==0 ||
@@ -419,9 +448,9 @@ namespace osmscout {
                                                             Progress& progress,
                                                             const TypeConfig& /*typeConfig*/)
   {
-    progress.Info("Duplicate nodes removed: " + NumberToString(duplicateCount));
-    progress.Info("Redundant nodes removed: " + NumberToString(redundantCount));
-    progress.Info("Overall nodes: " + NumberToString(overallCount));
+    progress.Info("Duplicate nodes removed: " + std::to_string(duplicateCount));
+    progress.Info("Redundant nodes removed: " + std::to_string(redundantCount));
+    progress.Info("Overall nodes: " + std::to_string(overallCount));
 
     return true;
   }
@@ -460,7 +489,7 @@ namespace osmscout {
                                               Area& area,
                                               bool& save)
   {
-    save=area.GetType()!=NULL &&
+    save=area.GetType()!=nullptr &&
          area.GetType()!=typeInfoIgnore;
 
     if (!save) {
@@ -474,7 +503,7 @@ namespace osmscout {
                                                          Progress& progress,
                                                          const TypeConfig& /*typeConfig*/)
   {
-    progress.Info("Areas without a type removed: " + NumberToString(removedAreasCount));
+    progress.Info("Areas without a type removed: " + std::to_string(removedAreasCount));
 
     return true;
   }
@@ -892,10 +921,10 @@ namespace osmscout {
 
       EnrichLevels(levels);
 
-      assert(levels[0].size()==1);
+      //assert(levels[0].size()==1);
 
       for (size_t i=0; i<levels.size(); i++) {
-        progress.Info("Level "+NumberToString(i)+" has " + NumberToString(levels[i].size())+" entries");
+        progress.Info("Level "+std::to_string(i)+" has " + std::to_string(levels[i].size())+" entries");
       }
 
       //
@@ -967,7 +996,7 @@ namespace osmscout {
       mapWriter.SetPos(0);
       mapWriter.Write(overallDataCount);
 
-      progress.Info(NumberToString(overallDataCount) + " object(s) written to file '"+dataWriter.GetFilename()+"'");
+      progress.Info(std::to_string(overallDataCount) + " object(s) written to file '"+dataWriter.GetFilename()+"'");
 
       scanner.Close();
       indexWriter.Close();

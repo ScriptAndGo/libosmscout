@@ -26,7 +26,7 @@
 
 #include <osmscout/Coord.h>
 #include <osmscout/Tag.h>
-#include <osmscout/TurnRestriction.h>
+#include <osmscout/routing/TurnRestriction.h>
 
 #include <osmscout/util/FileWriter.h>
 #include <osmscout/util/WorkQueue.h>
@@ -154,11 +154,12 @@ namespace osmscout {
       Callback(const TypeConfigRef& typeConfig,
                const ImportParameter& parameter,
                Progress& progress);
-      virtual ~Callback();
+
+      ~Callback() override;
 
       bool Initialize();
 
-      void ProcessBlock(RawBlockDataRef data);
+      void ProcessBlock(RawBlockDataRef data) override;
 
       bool Cleanup(bool success);
     };
@@ -171,11 +172,11 @@ namespace osmscout {
 
   public:
     void GetDescription(const ImportParameter& parameter,
-                        ImportModuleDescription& description) const;
+                        ImportModuleDescription& description) const override;
 
     bool Import(const TypeConfigRef& typeConfig,
                 const ImportParameter& parameter,
-                Progress& progress);
+                Progress& progress) override;
   };
 }
 

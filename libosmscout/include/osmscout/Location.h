@@ -35,6 +35,15 @@ namespace osmscout {
    * in the libosmscout database.
    */
 
+  class OSMSCOUT_API PostalArea
+  {
+  public:
+    std::string name;         //!< Name of the postal area
+    FileOffset  objectOffset; //!< Offset of the postal area data
+  };
+
+  typedef std::shared_ptr<PostalArea> PostalAreaRef;
+
   /**
    \ingroup Location
    A named administrative region. It is used to build up hierarchical,
@@ -64,6 +73,8 @@ namespace osmscout {
     std::string              aliasName;          //!< Additional optional alias name
     ObjectFileRef            aliasObject;        //!< Additional optional alias reference
     std::vector<RegionAlias> aliases;            //!< The list of alias for this region
+    std::vector<PostalArea>  postalAreas;        //<! The list of postal areas
+    std::vector<FileOffset>  childrenOffsets;    //!< The list of child region offset
 
   public:
     bool Match(const ObjectFileRef& object) const;
@@ -91,7 +102,7 @@ namespace osmscout {
     };
 
   public:
-    virtual ~AdminRegionVisitor();
+    virtual ~AdminRegionVisitor() = default;
 
     virtual Action Visit(const AdminRegion& region) = 0;
   };
@@ -110,6 +121,20 @@ namespace osmscout {
   };
 
   typedef std::shared_ptr<POI> POIRef;
+
+  /**
+   * \ingroup Location
+   * Visitor that gets called for every POI found in the given area.
+   * It is the task of the visitor to decide if a locations matches the given criteria.
+   */
+  class OSMSCOUT_API POIVisitor
+  {
+  public:
+    virtual ~POIVisitor() = default;
+
+    virtual bool Visit(const AdminRegion& adminRegion,
+                       const POI &poi) = 0;
+  };
 
   /**
     \ingroup Location
@@ -138,11 +163,13 @@ namespace osmscout {
   class OSMSCOUT_API LocationVisitor
   {
   public:
-    virtual ~LocationVisitor();
+    virtual ~LocationVisitor() = default;
 
+    /**
+     * @return true if location traversal should continue
+     */
     virtual bool Visit(const AdminRegion& adminRegion,
-                       const POI &poi) = 0;
-    virtual bool Visit(const AdminRegion& adminRegion,
+                       const PostalArea& postalArea,
                        const Location &location) = 0;
   };
 
@@ -158,7 +185,6 @@ namespace osmscout {
     FileOffset    locationOffset; //!< Offset to location
     FileOffset    regionOffset;   //!< Offset of the admin region this location is in
     std::string   name;           //!< name of the address
-    std::string   postalCode;     //!< postal code of the address
     ObjectFileRef object;         //!< Object that represents the address
   };
 
@@ -172,9 +198,10 @@ namespace osmscout {
   class OSMSCOUT_API AddressVisitor
   {
   public:
-    virtual ~AddressVisitor();
+    virtual ~AddressVisitor() = default;
 
     virtual bool Visit(const AdminRegion& adminRegion,
+                       const PostalArea& postalArea,
                        const Location& location,
                        const Address& address) = 0;
   };
@@ -189,6 +216,7 @@ namespace osmscout {
     {
     public:
       AdminRegionRef adminRegion; //!< The admin region the address is contained by
+      PostalAreaRef  postalArea;  //!< The postal area
       LocationRef    location;    //!< The location the address belongs to
       AddressRef     address;     //!< The address itself
     };
@@ -204,6 +232,7 @@ namespace osmscout {
     AddressListVisitor(size_t limit);
 
     bool Visit(const AdminRegion& adminRegion,
+               const PostalArea& postalArea,
                const Location& location,
                const Address& address);
   };
@@ -224,17 +253,19 @@ namespace osmscout {
   class OSMSCOUT_API Place
   {
   private:
-    ObjectFileRef  object;      //!< Object the location is in
-    FeatureValueBufferRef objectFeatures;
-    AdminRegionRef adminRegion; //!< Region the object is in, if set
-    POIRef         poi;         //!< POI data, if set
-    LocationRef    location;    //!< Location data, if set
-    AddressRef     address;     //!< Address data if set
+    ObjectFileRef         object;         //!< Object the location is in
+    FeatureValueBufferRef objectFeatures; //!< Features of the object
+    AdminRegionRef        adminRegion;    //!< Region the object is in, if set
+    PostalAreaRef         postalArea;     //!< Postal area the object is in, if set
+    POIRef                poi;            //!< POI data, if set
+    LocationRef           location;       //!< Location data, if set
+    AddressRef            address;        //!< Address data if set
 
   public:
     Place(const ObjectFileRef& object,
           const FeatureValueBufferRef objectFeatureBuff,
           const AdminRegionRef& adminRegion,
+          const PostalAreaRef& postalArea,
           const POIRef& poi,
           const LocationRef& location,
           const AddressRef& address);
@@ -254,6 +285,11 @@ namespace osmscout {
       return adminRegion;
     }
 
+    inline PostalAreaRef GetPostalArea() const
+    {
+      return postalArea;
+    }
+
     inline POIRef GetPOI() const
     {
       return poi;
@@ -263,6 +299,7 @@ namespace osmscout {
     {
       return location;
     }
+
 
     inline AddressRef GetAddress() const
     {

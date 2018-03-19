@@ -48,6 +48,18 @@
           "value": "OFF"
         },
         {
+          "name": "OSMSCOUT_BUILD_TEST", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TESTS", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_GPX", 
+          "value": "OFF"
+        },
+        {
           "name": "ENABLE_DEBUG_POSTFIX",
           "value": "OFF"
         }
@@ -94,6 +106,18 @@
         {
           "name": "OSMSCOUT_BUILD_MAP_DIRECTX",
           "value": "ON"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TEST", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TESTS", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_GPX", 
+          "value": "OFF"
         },
         {
           "name": "OSMSCOUT_BUILD_IMPORT",
@@ -149,6 +173,14 @@
           "value": "OFF"
         },
         {
+          "name": "OSMSCOUT_BUILD_TEST", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TESTS", 
+          "value": "OFF"
+        },
+        {
           "name": "ENABLE_DEBUG_POSTFIX",
           "value": "OFF"
         }
@@ -199,6 +231,14 @@
         },
         {
           "name": "OSMSCOUT_BUILD_IMPORT",
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TEST", 
+          "value": "OFF"
+        },
+        {
+          "name": "OSMSCOUT_BUILD_TESTS", 
           "value": "OFF"
         }
       ],
